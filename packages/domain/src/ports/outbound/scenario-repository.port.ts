@@ -3,8 +3,10 @@ import type { FleetMode } from '../../entities/scenario-run.js';
 
 export interface StartRunOptions {
   scenarioId: string;
+  mode?: FleetMode;
   seed?: number;
   speedFactor?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ScenarioRepositoryPort {

@@ -7,17 +7,13 @@ import { getPool } from './pool.js';
 
 export class PgTelemetryRepository implements TelemetryRepositoryPort {
   async readSlice(query: TelemetrySliceQuery): Promise<TelemetryPoint[]> {
-    const params: unknown[] = [query.vehicleId, query.from, query.to];
+    const params: unknown[] = [query.vehicleId, query.fromTs, query.toTs];
     let sql = `
       SELECT * FROM fleet.telemetry_points
       WHERE vehicle_id = $1
         AND ts >= $2
         AND ts <= $3
     `;
-    if (query.sourceMode) {
-      sql += ` AND source_mode = $4`;
-      params.push(query.sourceMode);
-    }
     sql += ` ORDER BY ts ASC`;
     if (query.limit) {
       sql += ` LIMIT $${params.length + 1}`;
@@ -40,11 +36,11 @@ export class PgTelemetryRepository implements TelemetryRepositoryPort {
     return rows.map(mapTelemetryRow);
   }
 
-  async appendMany(points: TelemetryPoint[]): Promise<void> {
-    if (points.length === 0) return;
+  async appendMany(points: Omit<TelemetryPoint, 'id' | 'tsEpochMs' | 'createdAt'>[]): Promise<TelemetryPoint[]> {
+    if (points.length === 0) return [];
     const values: unknown[] = [];
     const placeholders = points.map((p, i) => {
-      const base = i * 18;
+      const base = i * 19;
       values.push(
         p.vehicleId,
         p.vehicleRegNo,
@@ -64,20 +60,23 @@ export class PgTelemetryRepository implements TelemetryRepositoryPort {
         p.engineTempC ?? null,
         p.batteryV ?? null,
         p.rpm ?? null,
+        JSON.stringify(p.metadata ?? {}),
       );
-      // 18 cols per row
-      const cols = Array.from({ length: 18 }, (_, k) => `$${base + k + 1}`);
+      // 19 cols per row
+      const cols = Array.from({ length: 19 }, (_, k) => `$${base + k + 1}`);
       return `(${cols.join(',')})`;
     });
-    await getPool().query(
+    const { rows } = await getPool().query(
       `INSERT INTO fleet.telemetry_points
          (vehicle_id, vehicle_reg_no, trip_id, scenario_run_id, source_mode, source_emitter_id,
           ts, lat, lng, speed_kph, ignition, idling, fuel_pct, odometer_km,
-          heading_deg, engine_temp_c, battery_v, rpm)
+          heading_deg, engine_temp_c, battery_v, rpm, metadata)
        VALUES ${placeholders.join(',')}
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
       values,
     );
+    return rows.map(mapTelemetryRow);
   }
 }
 

@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { fetch } from 'undici';
-import { randomUUID } from 'crypto';
 
 /**
  * Vehicle emitter — one container instance per vehicle.
@@ -27,22 +26,22 @@ if (!VEHICLE_ID || !VEHICLE_REG_NO) {
 // ── Mutable vehicle state ───────────────────────────────────────────────────
 let lat = parseFloat(process.env['START_LAT'] ?? '28.6');
 let lng = parseFloat(process.env['START_LNG'] ?? '77.2');
-let speedKmh = 0;
-let heading = 0;
+let speedKph = 0;
+let headingDeg = 0;
 let odometerKm = 1000;
 let fuelPct = 80;
-let engineOn = true;
+let ignition = true;
 
 // ── Deterministic-ish movement simulation ──────────────────────────────────
 function step(): void {
   // Gradual acceleration / deceleration
   const target = 20 + Math.random() * 60;
-  speedKmh = speedKmh * 0.85 + target * 0.15;
-  heading = (heading + (Math.random() - 0.5) * 10 + 360) % 360;
+  speedKph = speedKph * 0.85 + target * 0.15;
+  headingDeg = (headingDeg + (Math.random() - 0.5) * 10 + 360) % 360;
 
-  const distKm = (speedKmh / 3600) * (EMIT_INTERVAL_MS / 1000);
-  const dLat = distKm * Math.cos((heading * Math.PI) / 180) * (1 / 111);
-  const dLng = distKm * Math.sin((heading * Math.PI) / 180) * (1 / (111 * Math.cos((lat * Math.PI) / 180)));
+  const distKm = (speedKph / 3600) * (EMIT_INTERVAL_MS / 1000);
+  const dLat = distKm * Math.cos((headingDeg * Math.PI) / 180) * (1 / 111);
+  const dLng = distKm * Math.sin((headingDeg * Math.PI) / 180) * (1 / (111 * Math.cos((lat * Math.PI) / 180)));
 
   lat += dLat;
   lng += dLng;
@@ -53,18 +52,28 @@ function step(): void {
 async function emit(): Promise<void> {
   step();
 
+  const now = new Date();
+  const isIdling = speedKph < 3;
+
   const point = {
-    id: randomUUID(),
     vehicleId: VEHICLE_ID,
-    ts: new Date().toISOString(),
+    vehicleRegNo: VEHICLE_REG_NO,
+    sourceMode: 'live' as const,
+    sourceEmitterId: `emitter-${VEHICLE_REG_NO}`,
+    ts: now.toISOString(),
+    tsEpochMs: now.getTime(),
     lat,
     lng,
-    speedKmh: Math.round(speedKmh * 10) / 10,
-    heading: Math.round(heading),
-    odometerKm: Math.round(odometerKm),
+    speedKph: Math.round(speedKph * 10) / 10,
+    ignition,
+    idling: isIdling,
     fuelPct: Math.round(fuelPct * 10) / 10,
-    engineOn,
-    sourceMode: 'live',
+    engineTempC: 80 + Math.random() * 20,
+    batteryV: 12 + Math.random() * 2,
+    odometerKm: Math.round(odometerKm),
+    headingDeg: Math.round(headingDeg) % 360,
+    rpm: Math.round(600 + speedKph * 40),
+    metadata: {},
   };
 
   try {

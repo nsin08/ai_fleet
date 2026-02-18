@@ -56,7 +56,7 @@ fleetRouter.get('/vehicles/:vehicleId', async (req: Request, res: Response, next
 
     const [latestTelemetry, activeAlerts] = await Promise.all([
       telemetryRepo.readLatestN(vehicle.id, 10),
-      alertRepo.listAlerts({ vehicleId: vehicle.id, status: 'open' }),
+      alertRepo.listAlerts({ vehicleId: vehicle.id, status: 'OPEN' }),
     ]);
 
     return res.json({ vehicle, latestTelemetry, activeAlerts });

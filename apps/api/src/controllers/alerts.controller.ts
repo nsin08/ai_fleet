@@ -16,7 +16,8 @@ const listQuerySchema = z.object({
 });
 
 const ackBodySchema = z.object({
-  acknowledgedBy: z.string().min(1),
+  actorId: z.string().min(1).optional(),
+  note: z.string().optional(),
 });
 
 /** GET /api/alerts */
@@ -25,9 +26,13 @@ alertsRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
     const query = listQuerySchema.parse(req.query);
     const repo = new PgAlertRepository();
     const alerts = await repo.listAlerts({
-      ...query,
-      from: query.from ? new Date(query.from) : undefined,
-      to: query.to ? new Date(query.to) : undefined,
+      vehicleId: query.vehicleId,
+      status: query.status?.toUpperCase() as 'OPEN' | 'ACK' | 'CLOSED' | undefined,
+      severity: query.severity?.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | undefined,
+      fromTs: query.from ? new Date(query.from) : undefined,
+      toTs: query.to ? new Date(query.to) : undefined,
+      limit: query.limit,
+      offset: query.offset,
     });
     res.json({ data: alerts, total: alerts.length });
   } catch (err) {
@@ -54,7 +59,8 @@ alertsRouter.post('/:alertId/ack', async (req: Request, res: Response, next: Nex
     const repo = new PgAlertRepository();
     const alert = await repo.ackAlert({
       alertId: req.params['alertId']!,
-      acknowledgedBy: body.acknowledgedBy,
+      actorId: body.actorId,
+      note: body.note,
     });
     return res.json(alert);
   } catch (err) {

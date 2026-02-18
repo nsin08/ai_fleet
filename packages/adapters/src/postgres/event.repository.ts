@@ -11,34 +11,46 @@ import type {
 import { getPool } from './pool.js';
 
 export class PgEventRepository implements EventRepositoryPort {
-  async append(event: FleetEvent): Promise<void> {
-    await this.appendMany([event]);
+  async append(event: Omit<FleetEvent, 'createdAt'>): Promise<FleetEvent> {
+    const result = await this.appendMany([event]);
+    return result[0]!;
   }
 
-  async appendMany(events: FleetEvent[]): Promise<void> {
-    if (events.length === 0) return;
+  async appendMany(events: Omit<FleetEvent, 'createdAt'>[]): Promise<FleetEvent[]> {
+    if (events.length === 0) return [];
     const values: unknown[] = [];
     const placeholders = events.map((e, i) => {
-      const base = i * 8;
+      const base = i * 14;
       values.push(
         e.id,
-        e.vehicleId,
         e.ts,
-        e.type,
-        e.severity,
+        e.vehicleId,
+        e.vehicleRegNo,
+        e.driverId ?? null,
+        e.tripId ?? null,
+        e.scenarioRunId ?? null,
+        e.sourceMode,
+        e.sourceEmitterId ?? null,
         e.source,
-        e.value ?? null,
-        JSON.stringify(e.meta ?? {}),
+        e.eventType,
+        e.severity,
+        e.message,
+        JSON.stringify(e.metadata ?? {}),
       );
-      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
+      // 14 columns per row
+      const cols = Array.from({ length: 14 }, (_, k) => `$${base + k + 1}`);
+      return `(${cols.join(',')})`;
     });
-    await getPool().query(
+    const { rows } = await getPool().query(
       `INSERT INTO fleet.events
-         (id, vehicle_id, ts, type, severity, source, value, meta)
+         (id, ts, vehicle_id, vehicle_reg_no, driver_id, trip_id, scenario_run_id,
+          source_mode, source_emitter_id, source, event_type, severity, message, metadata)
        VALUES ${placeholders.join(',')}
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO NOTHING
+       RETURNING *`,
       values,
     );
+    return rows.map(mapEventRow);
   }
 
   async listEvents(filters: EventListFilters = {}): Promise<FleetEvent[]> {
@@ -50,21 +62,21 @@ export class PgEventRepository implements EventRepositoryPort {
       conditions.push(`vehicle_id = $${idx++}`);
       params.push(filters.vehicleId);
     }
-    if (filters.type) {
-      conditions.push(`type = $${idx++}`);
-      params.push(filters.type);
+    if (filters.eventType) {
+      conditions.push(`event_type = $${idx++}`);
+      params.push(filters.eventType);
     }
     if (filters.severity) {
       conditions.push(`severity = $${idx++}`);
       params.push(filters.severity);
     }
-    if (filters.from) {
+    if (filters.fromTs) {
       conditions.push(`ts >= $${idx++}`);
-      params.push(filters.from);
+      params.push(filters.fromTs);
     }
-    if (filters.to) {
+    if (filters.toTs) {
       conditions.push(`ts <= $${idx++}`);
-      params.push(filters.to);
+      params.push(filters.toTs);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -90,12 +102,19 @@ export class PgEventRepository implements EventRepositoryPort {
 function mapEventRow(row: Record<string, unknown>): FleetEvent {
   return {
     id: row['id'] as string,
-    vehicleId: row['vehicle_id'] as string,
     ts: row['ts'] as Date,
-    type: row['type'] as EventType,
-    severity: row['severity'] as EventSeverity,
+    vehicleId: row['vehicle_id'] as string,
+    vehicleRegNo: row['vehicle_reg_no'] as string,
+    driverId: row['driver_id'] as string | undefined,
+    tripId: row['trip_id'] as string | undefined,
+    scenarioRunId: row['scenario_run_id'] as string | undefined,
+    sourceMode: row['source_mode'] as 'replay' | 'live',
+    sourceEmitterId: row['source_emitter_id'] as string | undefined,
     source: row['source'] as EventSource,
-    value: row['value'] as number | undefined,
-    meta: row['meta'] as Record<string, unknown> | undefined,
+    eventType: row['event_type'] as EventType,
+    severity: row['severity'] as EventSeverity,
+    message: row['message'] as string,
+    metadata: (row['metadata'] as Record<string, unknown>) ?? {},
+    createdAt: row['created_at'] as Date,
   };
 }

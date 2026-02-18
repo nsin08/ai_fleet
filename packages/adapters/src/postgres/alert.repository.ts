@@ -39,10 +39,11 @@ export class PgAlertRepository implements AlertRepositoryPort {
   async ackAlert(cmd: AckAlertCommand): Promise<Alert> {
     const { rows } = await getPool().query(
       `UPDATE fleet.alerts
-       SET status = 'ACK', acknowledged_by = $2, acknowledged_ts = NOW(), updated_at = NOW(), updated_ts = NOW()
+       SET status = 'ACK', acknowledged_by = $2, note = COALESCE($3, note),
+           acknowledged_ts = NOW(), updated_at = NOW(), updated_ts = NOW()
        WHERE id = $1
        RETURNING *`,
-      [cmd.alertId, cmd.acknowledgedBy],
+      [cmd.alertId, cmd.actorId ?? null, cmd.note ?? null],
     );
     if (!rows[0]) throw new Error(`Alert ${cmd.alertId} not found`);
     return mapAlertRow(rows[0]);
@@ -79,13 +80,21 @@ export class PgAlertRepository implements AlertRepositoryPort {
       conditions.push(`severity = $${idx++}`);
       params.push(filters.severity);
     }
-    if (filters.from) {
-      conditions.push(`created_ts >= $${idx++}`);
-      params.push(filters.from);
+    if (filters.alertType) {
+      conditions.push(`alert_type = $${idx++}`);
+      params.push(filters.alertType);
     }
-    if (filters.to) {
+    if (filters.vehicleRegNo) {
+      conditions.push(`vehicle_reg_no = $${idx++}`);
+      params.push(filters.vehicleRegNo);
+    }
+    if (filters.fromTs) {
+      conditions.push(`created_ts >= $${idx++}`);
+      params.push(filters.fromTs);
+    }
+    if (filters.toTs) {
       conditions.push(`created_ts <= $${idx++}`);
-      params.push(filters.to);
+      params.push(filters.toTs);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

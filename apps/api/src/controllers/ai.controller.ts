@@ -69,11 +69,12 @@ aiRouter.post('/explain-alert', async (req: Request, res: Response, next: NextFu
 You are a fleet operations AI. Explain the following alert and suggest remediation steps.
 
 Alert:
-- Type: ${alert.eventType}
+- Type: ${alert.alertType}
 - Severity: ${alert.severity}
-- Message: ${alert.message}
-- Vehicle: ${vehicle?.regNo ?? alert.vehicleId} (${vehicle?.type ?? 'unknown'})
-- Time: ${alert.ts.toISOString()}
+- Title: ${alert.title}
+- Description: ${alert.description}
+- Vehicle: ${vehicle?.vehicleRegNo ?? alert.vehicleId} (${vehicle?.vehicleType ?? 'unknown'})
+- Time: ${alert.createdTs.toISOString()}
 
 Provide: 1) Root cause analysis, 2) Immediate action, 3) Preventive measures.
 `.trim();
@@ -103,18 +104,18 @@ aiRouter.post('/daily-summary', async (req: Request, res: Response, next: NextFu
     const eventRepo = new PgEventRepository();
 
     const [alerts, events] = await Promise.all([
-      alertRepo.listAlerts({ from, to, limit: 100 }),
-      eventRepo.listEvents({ from, to, limit: 200 }),
+      alertRepo.listAlerts({ fromTs: from, toTs: to, limit: 100 }),
+      eventRepo.listEvents({ fromTs: from, toTs: to, limit: 200 }),
     ]);
 
     const ai = new OllamaAiInferenceAdapter();
     const prompt = `
 Fleet operations summary for ${from.toDateString()}:
-- Total alerts: ${alerts.length} (critical: ${alerts.filter((a) => a.severity === 'critical').length}, open: ${alerts.filter((a) => a.status === 'open').length})
+- Total alerts: ${alerts.length} (high: ${alerts.filter((a) => a.severity === 'HIGH').length}, open: ${alerts.filter((a) => a.status === 'OPEN').length})
 - Total events: ${events.length}
 - Top event types: ${Object.entries(
       events.reduce<Record<string, number>>((acc, e) => {
-        acc[e.type] = (acc[e.type] ?? 0) + 1;
+        acc[e.eventType] = (acc[e.eventType] ?? 0) + 1;
         return acc;
       }, {}),
     )

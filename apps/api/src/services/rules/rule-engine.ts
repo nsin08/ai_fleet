@@ -1,27 +1,31 @@
 import { PgAlertRepository, PgEventRepository, PgVehicleRepository } from '@ai-fleet/adapters';
-import type { TelemetryPoint, FleetEvent, Alert } from '@ai-fleet/domain';
-import { EventType, EventSeverity, EventSource, AlertStatus } from '@ai-fleet/domain';
+import type { TelemetryPoint, FleetEvent, Alert, EventType, EventSeverity } from '@ai-fleet/domain';
 import { WsGateway } from '../../ws/ws-gateway.js';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ThresholdRule {
   id: string;
   check: (point: TelemetryPoint) => boolean;
-  buildEvent: (point: TelemetryPoint) => Omit<FleetEvent, 'id'>;
+  buildEvent: (point: TelemetryPoint) => Omit<FleetEvent, 'id' | 'createdAt'>;
 }
 
 const RULES: ThresholdRule[] = [
   {
     id: 'overspeed',
-    check: (p) => p.speedKmh > 90,
+    check: (p) => p.speedKph > 90,
     buildEvent: (p) => ({
       vehicleId: p.vehicleId,
+      vehicleRegNo: p.vehicleRegNo,
+      tripId: p.tripId,
+      scenarioRunId: p.scenarioRunId,
+      sourceMode: p.sourceMode,
+      sourceEmitterId: p.sourceEmitterId,
       ts: p.ts,
-      type: EventType.OVERSPEED,
-      severity: p.speedKmh > 110 ? EventSeverity.HIGH : EventSeverity.MEDIUM,
-      source: EventSource.RULE_ENGINE,
-      value: p.speedKmh,
-      meta: { threshold: 90 },
+      eventType: 'OVERSPEED' as EventType,
+      severity: (p.speedKph > 110 ? 'HIGH' : 'MEDIUM') as EventSeverity,
+      source: 'rule_engine' as const,
+      message: `Vehicle ${p.vehicleRegNo} exceeding speed limit: ${p.speedKph} km/h`,
+      metadata: { threshold: 90, actual: p.speedKph },
     }),
   },
   {
@@ -29,12 +33,17 @@ const RULES: ThresholdRule[] = [
     check: (p) => p.fuelPct < 10,
     buildEvent: (p) => ({
       vehicleId: p.vehicleId,
+      vehicleRegNo: p.vehicleRegNo,
+      tripId: p.tripId,
+      scenarioRunId: p.scenarioRunId,
+      sourceMode: p.sourceMode,
+      sourceEmitterId: p.sourceEmitterId,
       ts: p.ts,
-      type: EventType.FUEL_ANOMALY,
-      severity: EventSeverity.HIGH,
-      source: EventSource.RULE_ENGINE,
-      value: p.fuelPct,
-      meta: { threshold: 10 },
+      eventType: 'FUEL_ANOMALY' as EventType,
+      severity: 'HIGH' as EventSeverity,
+      source: 'rule_engine' as const,
+      message: `Vehicle ${p.vehicleRegNo} critically low fuel: ${p.fuelPct}%`,
+      metadata: { threshold: 10, actual: p.fuelPct },
     }),
   },
 ];
@@ -62,21 +71,28 @@ export class RuleEngine {
         if (!rule.check(point)) continue;
 
         const eventData = rule.buildEvent(point);
-        const event: FleetEvent = { id: uuidv4(), ...eventData };
-        await eventRepo.append(event);
-        if (gateway) await gateway.publishEvent(event);
+        const event = { id: uuidv4(), ...eventData };
+        const [savedEvent] = await eventRepo.appendMany([event]);
+        if (gateway && savedEvent) await gateway.publishEvent(savedEvent);
 
-        const alert: Alert = {
+        const now = new Date();
+        const alert: Omit<Alert, 'createdAt' | 'updatedAt'> = {
           id: uuidv4(),
           vehicleId: point.vehicleId,
-          ts: point.ts,
-          eventType: event.type,
-          severity: event.severity,
-          message: `${event.type} detected on vehicle ${point.vehicleId}: value=${event.value}`,
-          status: AlertStatus.OPEN,
+          vehicleRegNo: point.vehicleRegNo,
+          tripId: point.tripId,
+          scenarioRunId: point.scenarioRunId,
+          createdTs: now,
+          updatedTs: now,
+          alertType: eventData.eventType,
+          severity: eventData.severity,
+          status: 'OPEN',
+          title: `${eventData.eventType} detected`,
+          description: eventData.message,
+          evidence: eventData.metadata,
           relatedEventIds: [event.id],
         };
-        const savedAlert = await alertRepo.createAlert(alert);
+        const savedAlert = await alertRepo.createAlert(alert as Alert);
         if (gateway) await gateway.publishAlert(savedAlert);
 
         // Update open alert count on vehicle state

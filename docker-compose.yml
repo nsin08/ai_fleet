@@ -117,8 +117,8 @@ services:
     environment:
       API_BASE_URL: http://api:3001
       EMIT_INTERVAL_MS: 2000
-      VEHICLE_ID: ${VEHICLE_ID:-00000000-0000-0000-0000-000000000001}
-      VEHICLE_REG_NO: ${VEHICLE_REG_NO:-MH12AB1234}
+      VEHICLE_ID: ${VEHICLE_ID:-veh-mum-01}
+      VEHICLE_REG_NO: ${VEHICLE_REG_NO:-MH04AB1001}
     profiles: [live]
 
 volumes:

@@ -6,10 +6,10 @@ import {
   SeededRng,
 } from '@ai-fleet/adapters';
 import type { ScenarioRun, TelemetryPoint } from '@ai-fleet/domain';
-import { TelemetrySourceMode } from '@ai-fleet/domain';
 import { WsGateway } from '../../ws/ws-gateway.js';
 import { RuleEngine } from '../rules/rule-engine.js';
-import { v4 as uuidv4 } from 'uuid';
+
+type TelemetryInput = Omit<TelemetryPoint, 'id' | 'tsEpochMs' | 'createdAt'>;
 
 /** Tick interval in wall-clock ms for the replay loop */
 const TICK_INTERVAL_MS = 500;
@@ -78,36 +78,46 @@ export class ReplayEngine {
     const vehicles = await vehicleRepo.list({ limit: 50 });
     if (vehicles.length === 0) return;
 
-    const points: TelemetryPoint[] = vehicles.map((v) => {
+    // Build telemetry points — omit `id` (SERIAL), `tsEpochMs` (generated), `createdAt` (DB default)
+    const points: TelemetryInput[] = vehicles.map((v) => {
       const baseLat = 28.6 + this.rng!.nextFloat(-0.5, 0.5);
       const baseLng = 77.2 + this.rng!.nextFloat(-0.5, 0.5);
       const speed = this.rng!.nextFloat(0, 80);
+      const isIdling = speed < 3;
 
       return {
-        id: uuidv4(),
         vehicleId: v.id,
+        vehicleRegNo: v.vehicleRegNo,
+        tripId: undefined,
+        scenarioRunId: this.currentRun!.id,
+        sourceMode: 'replay' as const,
+        sourceEmitterId: 'replay-engine',
         ts,
         lat: baseLat,
         lng: baseLng,
-        speedKmh: speed,
-        heading: this.rng!.nextInt(0, 359),
-        odometerKm: this.rng!.nextFloat(1000, 200_000),
+        speedKph: speed,
+        ignition: true,
+        idling: isIdling,
         fuelPct: this.rng!.nextFloat(10, 100),
-        engineOn: true,
-        sourceMode: TelemetrySourceMode.REPLAY,
+        engineTempC: this.rng!.nextFloat(70, 105),
+        batteryV: this.rng!.nextFloat(11.5, 14.5),
+        odometerKm: this.rng!.nextFloat(1000, 200_000),
+        headingDeg: this.rng!.nextInt(0, 359),
+        rpm: this.rng!.nextInt(600, 4500),
+        metadata: {},
       };
     });
 
-    await telemetryRepo.appendMany(points);
+    const savedPoints = await telemetryRepo.appendMany(points);
 
     if (gateway) {
-      for (const point of points) {
+      for (const point of savedPoints) {
         await gateway.publishTelemetry(point.vehicleId, point);
       }
     }
 
     if (ruleEngine) {
-      await ruleEngine.evaluate(points).catch((err) =>
+      await ruleEngine.evaluate(savedPoints).catch((err) =>
         console.error('[replay-engine] rule evaluation error', err),
       );
     }
@@ -115,7 +125,7 @@ export class ReplayEngine {
     // Update cursor in DB
     const scenarioRepo = new PgScenarioRepository();
     await scenarioRepo
-      .updateRunState(this.currentRun.id, 'running', ts)
+      .updateRunState(this.currentRun.id, 'RUNNING', ts)
       .catch(() => {/* ignore */});
   }
 }

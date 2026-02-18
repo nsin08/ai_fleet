@@ -4,6 +4,7 @@ import type {
 } from '@ai-fleet/domain';
 import type {
   ScenarioDefinition,
+  ScenarioDefinitionStep,
   ScenarioRun,
   ScenarioRunStatus,
   FleetMode,
@@ -14,7 +15,13 @@ export class PgScenarioRepository implements ScenarioRepositoryPort {
   async findDefinition(scenarioId: string): Promise<ScenarioDefinition | null> {
     const { rows } = await getPool().query(
       `SELECT sd.*, COALESCE(
-         json_agg(sds ORDER BY sds.step_order) FILTER (WHERE sds.id IS NOT NULL),
+         json_agg(json_build_object(
+           'scenarioId', sds.scenario_id,
+           'stepNo',     sds.step_no,
+           'atSec',      sds.at_sec,
+           'action',     sds.action,
+           'data',       sds.data
+         ) ORDER BY sds.step_no) FILTER (WHERE sds.scenario_id IS NOT NULL),
          '[]'
        ) AS steps
        FROM fleet.scenario_definitions sd
@@ -29,7 +36,13 @@ export class PgScenarioRepository implements ScenarioRepositoryPort {
   async listDefinitions(): Promise<ScenarioDefinition[]> {
     const { rows } = await getPool().query(
       `SELECT sd.*, COALESCE(
-         json_agg(sds ORDER BY sds.step_order) FILTER (WHERE sds.id IS NOT NULL),
+         json_agg(json_build_object(
+           'scenarioId', sds.scenario_id,
+           'stepNo',     sds.step_no,
+           'atSec',      sds.at_sec,
+           'action',     sds.action,
+           'data',       sds.data
+         ) ORDER BY sds.step_no) FILTER (WHERE sds.scenario_id IS NOT NULL),
          '[]'
        ) AS steps
        FROM fleet.scenario_definitions sd
@@ -43,10 +56,16 @@ export class PgScenarioRepository implements ScenarioRepositoryPort {
   async startRun(opts: StartRunOptions): Promise<ScenarioRun> {
     const { rows } = await getPool().query(
       `INSERT INTO fleet.scenario_runs
-         (scenario_id, status, started_at, seed, speed_factor)
-       VALUES ($1, 'running', NOW(), $2, $3)
+         (scenario_id, mode, status, started_at, seed, speed_factor, metadata)
+       VALUES ($1, $2, 'RUNNING', NOW(), $3, $4, $5::jsonb)
        RETURNING *`,
-      [opts.scenarioId, opts.seed ?? null, opts.speedFactor ?? 1.0],
+      [
+        opts.scenarioId,
+        opts.mode ?? 'replay',
+        opts.seed ?? null,
+        opts.speedFactor ?? 1.0,
+        JSON.stringify(opts.metadata ?? {}),
+      ],
     );
     return mapRunRow(rows[0]);
   }
@@ -60,14 +79,14 @@ export class PgScenarioRepository implements ScenarioRepositoryPort {
     const params: unknown[] = [runId, status];
     if (cursorTs) params.push(cursorTs);
 
-    const finishedClause =
-      status === 'completed' || status === 'failed'
-        ? `, finished_at = NOW()`
+    const endedClause =
+      status === 'COMPLETED' || status === 'FAILED' || status === 'RESET'
+        ? `, ended_at = NOW()`
         : '';
 
     const { rows } = await getPool().query(
       `UPDATE fleet.scenario_runs
-       SET status = $2${extra}${finishedClause}, updated_at = NOW()
+       SET status = $2${extra}${endedClause}, updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
       params,
@@ -84,12 +103,13 @@ export class PgScenarioRepository implements ScenarioRepositoryPort {
     return rows[0] ? mapRunRow(rows[0]) : null;
   }
 
-  async findActiveRun(_mode: FleetMode): Promise<ScenarioRun | null> {
+  async findActiveRun(mode: FleetMode): Promise<ScenarioRun | null> {
     const { rows } = await getPool().query(
       `SELECT * FROM fleet.scenario_runs
-       WHERE status IN ('running', 'paused')
+       WHERE mode = $1 AND status IN ('RUNNING', 'PAUSED')
        ORDER BY started_at DESC
        LIMIT 1`,
+      [mode],
     );
     return rows[0] ? mapRunRow(rows[0]) : null;
   }
@@ -100,21 +120,27 @@ function mapDefinitionRow(row: Record<string, unknown>): ScenarioDefinition {
     id: row['id'] as string,
     name: row['name'] as string,
     description: row['description'] as string | undefined,
-    durationSeconds: row['duration_seconds'] as number,
-    vehicleCount: row['vehicle_count'] as number,
-    steps: (row['steps'] as unknown[]) ?? [],
-  } as ScenarioDefinition;
+    timelineSec: row['timeline_sec'] as number,
+    steps: (row['steps'] as ScenarioDefinitionStep[]) ?? [],
+    isActive: row['is_active'] as boolean,
+    createdAt: row['created_at'] as Date,
+    updatedAt: row['updated_at'] as Date,
+  };
 }
 
 function mapRunRow(row: Record<string, unknown>): ScenarioRun {
   return {
     id: row['id'] as string,
-    scenarioId: row['scenario_id'] as string,
+    scenarioId: row['scenario_id'] as string | undefined,
+    mode: row['mode'] as FleetMode,
     status: row['status'] as ScenarioRunStatus,
-    startedAt: row['started_at'] as Date,
-    finishedAt: row['finished_at'] as Date | undefined,
-    cursorTs: row['cursor_ts'] as Date | undefined,
     seed: row['seed'] as number | undefined,
-    speedFactor: row['speed_factor'] as number,
+    speedFactor: Number(row['speed_factor'] ?? 1),
+    startedAt: row['started_at'] as Date,
+    endedAt: row['ended_at'] as Date | undefined,
+    cursorTs: row['cursor_ts'] as Date | undefined,
+    metadata: (row['metadata'] as Record<string, unknown>) ?? {},
+    createdAt: row['created_at'] as Date,
+    updatedAt: row['updated_at'] as Date,
   };
 }

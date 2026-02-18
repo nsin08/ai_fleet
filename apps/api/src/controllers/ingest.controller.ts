@@ -3,30 +3,35 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PgTelemetryRepository, PgEventRepository } from '@ai-fleet/adapters';
 import type { TelemetryPoint, FleetEvent } from '@ai-fleet/domain';
-enum TelemetrySourceMode {
-  REPLAY = 'replay',
-  LIVE = 'live',
-}
 import { RuleEngine } from '../services/rules/rule-engine.js';
 
 export const ingestRouter = Router();
 
 const telemetryPointSchema = z.object({
-  id: z.string().uuid(),
-  vehicleId: z.string().uuid(),
+  vehicleId: z.string(),
+  vehicleRegNo: z.string(),
+  tripId: z.string().optional(),
+  scenarioRunId: z.string().optional(),
+  sourceMode: z.enum(['replay', 'live']),
+  sourceEmitterId: z.string().optional(),
   ts: z.string().datetime(),
+  tsEpochMs: z.number().optional(),
   lat: z.number(),
   lng: z.number(),
-  speedKmh: z.number().min(0),
-  heading: z.number().min(0).max(360).optional(),
-  odometerKm: z.number().min(0),
+  speedKph: z.number().min(0),
+  ignition: z.boolean(),
+  idling: z.boolean().optional().default(false),
   fuelPct: z.number().min(0).max(100),
-  engineOn: z.boolean(),
-  sourceMode: z.nativeEnum(TelemetrySourceMode),
+  engineTempC: z.number().optional(),
+  batteryV: z.number().optional(),
+  odometerKm: z.number().min(0),
+  headingDeg: z.number().min(0).lt(360).optional(),
+  rpm: z.number().optional(),
+  metadata: z.record(z.unknown()).optional().default({}),
 });
 
 const batchSchema = z.object({
-  vehicleId: z.string().uuid(),
+  vehicleId: z.string(),
   points: z.array(telemetryPointSchema).min(1).max(500),
 });
 
@@ -34,10 +39,11 @@ const batchSchema = z.object({
 ingestRouter.post('/telemetry', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = batchSchema.parse(req.body);
-    const points: TelemetryPoint[] = body.points.map((p) => ({
+    const points = body.points.map((p) => ({
       ...p,
       ts: new Date(p.ts),
-    }));
+      tsEpochMs: p.tsEpochMs ?? new Date(p.ts).getTime(),
+    })) as unknown as TelemetryPoint[];
 
     const repo = new PgTelemetryRepository();
     await repo.appendMany(points);
@@ -54,16 +60,22 @@ ingestRouter.post('/telemetry', async (req: Request, res: Response, next: NextFu
 });
 
 const eventBatchSchema = z.object({
-  vehicleId: z.string().uuid(),
+  vehicleId: z.string(),
   events: z.array(z.object({
     id: z.string().uuid(),
-    vehicleId: z.string().uuid(),
-    ts: z.string().datetime(),
-    type: z.string(),
-    severity: z.string(),
+    vehicleId: z.string(),
+    vehicleRegNo: z.string(),
+    driverId: z.string().optional(),
+    tripId: z.string().optional(),
+    scenarioRunId: z.string().optional(),
+    sourceMode: z.enum(['replay', 'live']),
+    sourceEmitterId: z.string().optional(),
     source: z.string(),
-    value: z.number().optional(),
-    meta: z.record(z.unknown()).optional(),
+    ts: z.string().datetime(),
+    eventType: z.string(),
+    severity: z.string(),
+    message: z.string(),
+    metadata: z.record(z.unknown()).optional().default({}),
   })).min(1),
 });
 
@@ -74,7 +86,7 @@ ingestRouter.post('/events', async (req: Request, res: Response, next: NextFunct
     const events = body.events.map((e) => ({
       ...e,
       ts: new Date(e.ts),
-    })) as FleetEvent[];
+    })) as unknown as FleetEvent[];
 
     const repo = new PgEventRepository();
     await repo.appendMany(events);

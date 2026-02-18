@@ -1,4 +1,4 @@
-import Ollama from 'ollama';
+import { Ollama } from 'ollama';
 import type {
   AiInferencePort,
   AiMessage,
@@ -15,7 +15,7 @@ const OLLAMA_BASE_URL =
   process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434';
 
 export class OllamaAiInferenceAdapter implements AiInferencePort {
-  private readonly ollama: InstanceType<typeof Ollama>;
+  private readonly ollama: Ollama;
 
   constructor() {
     this.ollama = new Ollama({ host: OLLAMA_BASE_URL });

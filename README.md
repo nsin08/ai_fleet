@@ -10,7 +10,9 @@ A full-stack, container-first fleet management platform designed for demo and ev
 
 - **Replay mode** — deterministic scripted scenarios driven from PostgreSQL
 - **Live mode** — scaled vehicle emitter containers posting real-time telemetry
-- **AI Copilot** — Ollama-backed local LLM for alert explanations, daily summaries, and next-action recommendations
+- **AI Copilot** — Ollama-backed local LLM for alert explanations, fleet chat, and next-action recommendations
+- **Real-time dashboard** — Next.js multi-page UI with WebSocket telemetry feed
+- **Rule engine** — Automatic event/alert generation from telemetry thresholds
 - **Governance-enforced delivery** — every code change goes through space_framework state machine
 
 ---
@@ -19,48 +21,64 @@ A full-stack, container-first fleet management platform designed for demo and ev
 
 ### Prerequisites
 
-- Docker + Docker Compose
-- Node.js 20+, Python 3.11+ (for local dev outside containers)
-- Ollama running on your laptop (host): `ollama serve` — **not** managed by Docker Compose
-- Recommended model: `deepseek-r1:8b` or `phi` (verify with `ollama list`)
-- API containers reach host Ollama via `http://host.docker.internal:11434`
+- Docker + Docker Compose v2
+- Node.js 20+ (for local dev outside containers)
+- Ollama running on your laptop: `ollama serve`
+- Recommended models: `ollama pull deepseek-r1:8b` and `ollama pull mxbai-embed-large`
 
-### Start Core Services
+### 1. Start Core Services
 
 ```bash
 docker compose --profile core up -d db api web
 ```
 
-### Run Migrations + Seed Data
+### 2. Run Migrations + Seed Data (first run only)
 
 ```bash
 docker compose --profile ops run --rm migrator
 docker compose --profile ops run --rm seed-loader
 ```
 
-### Run a Demo Scenario (Replay Mode)
+### 3. Verify
 
 ```bash
-# Start scenario A: Off-route + Geofence breach
-curl -X POST http://localhost:3001/api/scenarios/run \
-  -H "Content-Type: application/json" \
-  -d '{"scenarioId":"A","seed":42,"speedFactor":1}'
+# Check containers
+docker compose ps
+
+# API health
+curl http://localhost:3001/healthz
+
+# Fleet mode
+curl http://localhost:3001/api/fleet/mode
+
+# Dashboard
+open http://localhost:3000
 ```
 
-### Scale Live Emitters (Live Mode)
+### 4. Run a Demo Scenario (Replay Mode)
 
 ```bash
-# Switch to live mode
-curl -X POST http://localhost:3001/api/fleet/mode \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"live"}'
+# List available scenarios
+curl http://localhost:3001/api/scenarios | jq '.data[].id'
 
-# Scale to 30 vehicles (18 cars, 9 vans, 3 trucks)
-docker compose --profile emitters up -d \
-  --scale vehicle-emitter-car=18 \
-  --scale vehicle-emitter-van=9 \
-  --scale vehicle-emitter-truck=3 \
-  vehicle-emitter-car vehicle-emitter-van vehicle-emitter-truck
+# Start a scenario
+curl -X POST http://localhost:3001/api/scenarios/scenario-mixed-alert/run \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### 5. Start Live Telemetry (Live Mode)
+
+```bash
+docker compose --profile live up -d vehicle-emitter
+```
+
+### 6. Ask the AI Copilot
+
+```bash
+curl -X POST http://localhost:3001/api/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Give me a fleet status snapshot"}'
 ```
 
 ---
@@ -72,19 +90,56 @@ Hexagonal (Ports & Adapters) + SOLID + 12-Factor. No framework coupling in domai
 ```
 ai_fleet/
 ├── apps/
-│   ├── api/              # Node.js + TypeScript — REST, WebSocket, replay engine, rule engine
-│   ├── web/              # Next.js + TypeScript + Tailwind — dashboard UI
-│   └── vehicle-emitter/  # Node.js — scaled container per vehicle type (live mode)
+│   ├── api/              # Express.js + TypeScript — REST, WebSocket, replay engine, rule engine
+│   ├── web/              # Next.js 14 + Tailwind — multi-page dashboard
+│   └── vehicle-emitter/  # Node.js — containerized live telemetry emitter
 ├── packages/
-│   ├── domain/           # Pure entities, port interfaces, use-case contracts (no IO)
-│   └── adapters/         # PostgreSQL, Ollama, clock/RNG adapter implementations
+│   ├── domain/           # Pure entities, port interfaces (no IO, no deps)
+│   └── adapters/         # PostgreSQL, Ollama, clock/RNG implementations
 ├── db/
-│   └── migrations/       # PostgreSQL schema (0001_init.sql)
+│   ├── migrations/       # PostgreSQL schema (0001_init.sql)
+│   └── seeds/            # Reference data + demo scenarios
 ├── .context/
-│   ├── project/          # Architecture, ADRs, API contracts, runbooks (committed)
+│   ├── project/          # Architecture, ADRs, API contracts (committed)
 │   └── sprint/           # Sprint plans and retros (committed)
 └── docker-compose.yml
 ```
+
+### Domain Entities
+
+`vehicle`, `driver`, `depot`, `route`, `trip`, `telemetry_point`, `fleet_event`, `alert`, `scenario_run`, `vehicle_latest_state`, `fleet_runtime_state`
+
+### Dashboard Pages
+
+| Page | URL | Features |
+|------|-----|----------|
+| **Overview** | `/` | KPI cards, scenario controls, vehicle table, live WebSocket feed |
+| **Alerts** | `/alerts` | Filter by status/severity, detail panel, ack/close/AI explain |
+| **Vehicle Detail** | `/vehicles/:id` | Telemetry cards, history table, open alerts, live updates |
+| **Scenarios** | `/scenarios` | Scenario cards, step listing, run/pause/resume/reset controls |
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/healthz` | Health check |
+| `GET` | `/api/fleet/mode` | Current fleet mode (replay/live) |
+| `GET` | `/api/fleet/vehicles` | Vehicle list with filters |
+| `GET` | `/api/fleet/vehicles/:id` | Vehicle detail + telemetry + alerts |
+| `GET` | `/api/alerts` | Alert list with status/severity filters |
+| `POST` | `/api/alerts/:id/ack` | Acknowledge alert |
+| `POST` | `/api/alerts/:id/close` | Close alert |
+| `GET` | `/api/scenarios` | List scenario definitions |
+| `GET` | `/api/scenarios/:id` | Scenario definition detail |
+| `POST` | `/api/scenarios/:id/run` | Start scenario replay |
+| `POST` | `/api/scenarios/runs/:id/pause` | Pause replay |
+| `POST` | `/api/scenarios/runs/:id/resume` | Resume replay |
+| `POST` | `/api/scenarios/runs/:id/reset` | Reset replay |
+| `POST` | `/api/ingest/telemetry` | Batch telemetry from emitters |
+| `POST` | `/api/ingest/events` | Batch events from emitters |
+| `POST` | `/api/ai/chat` | AI fleet chat |
+| `POST` | `/api/ai/explain-alert` | AI alert explanation |
+| `WS` | `/ws` | Real-time telemetry/event/alert/state stream |
 
 See [`.context/project/ARCHITECTURE.md`](.context/project/ARCHITECTURE.md) and [`.context/project/COMPONENTS_AND_API_CONTRACTS.md`](.context/project/COMPONENTS_AND_API_CONTRACTS.md) for full design detail.
 
@@ -92,14 +147,22 @@ See [`.context/project/ARCHITECTURE.md`](.context/project/ARCHITECTURE.md) and [
 
 ## Demo Scenarios
 
-| ID | Name | Vehicle | What Happens |
-|----|------|---------|-------------|
-| A | Off-Route + Geofence Breach | `KA01MN4321` | Route deviation → geofence alert |
-| B | Fuel Theft Anomaly | `TS09QJ7744` | Abnormal fuel drop at low speed |
-| C | DTC Overheat + Maintenance Due | `KA53TR1088` | Engine fault codes + maintenance flag |
-| D | Driver Fatigue | `TS10LK5591` | Fatigue indicators over long shift |
+| ID | Name | Timeline | Events |
+|----|------|----------|--------|
+| `scenario-mixed-alert` | Mixed Alert Demo | 120s | Overspeed, harsh brake, fuel anomaly alerts |
+| `scenario-geofence-breach` | Geofence Breach | 90s | Route deviation + geofence entry |
+| `scenario-maintenance-cascade` | Maintenance Cascade | 150s | DTC faults, engine temp, maintenance due |
 
-See [`.context/project/RUNBOOKS/demo-scenarios-playbook.md`](.context/project/RUNBOOKS/demo-scenarios-playbook.md).
+### Demo Walkthrough
+
+1. Open dashboard at `http://localhost:3000`
+2. On the Overview page, select a scenario from the dropdown
+3. Click "Start" — fleet mode switches to "replay"
+4. Watch the live event feed (right sidebar) as telemetry streams in
+5. Navigate to **Alerts** to see generated alerts, acknowledge or close them
+6. Click "AI Explain" on any alert for Ollama-powered root cause analysis
+7. Navigate to **Scenarios** to pause/resume/reset the replay
+8. Start the vehicle emitter for live telemetry alongside or instead of replay
 
 ---
 
@@ -152,11 +215,45 @@ All delivery is managed via [space_framework](https://github.com/nsin08/space_fr
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 14 · TypeScript · Tailwind CSS |
-| Backend API | Node.js · TypeScript · Express/Fastify |
+| Frontend | Next.js 14 · TypeScript · Tailwind CSS · SWR |
+| Backend API | Node.js · TypeScript · Express · Zod |
 | Domain / Ports | TypeScript (pure, no IO) |
-| Database | PostgreSQL 16 |
-| AI Provider | Ollama (local) → cloud LLM (future) |
+| Database | PostgreSQL 16 (schema `fleet`) |
+| AI Provider | Ollama (local) — deepseek-r1:8b |
 | Vehicle Emitter | Node.js · TypeScript (containerized) |
-| Container Runtime | Docker Compose |
+| Testing | Jest 29 · ts-jest · Supertest |
+| Container Runtime | Docker Compose (profiles: core, ops, live) |
 | Governance | space_framework v1.0.0-alpha |
+
+---
+
+## Testing
+
+```bash
+# Run all tests
+npm test --workspace=packages/domain
+npm test --workspace=apps/api
+
+# Domain: 55 tests — entity contracts, type unions, port interfaces
+# API: 26 tests — route handlers, validation, error handling (mocked adapters)
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | (see compose) | PostgreSQL connection string |
+| `DB_HOST` | `db` | Database hostname |
+| `DB_PORT` | `5432` | Database port |
+| `DB_NAME` | `ai_fleet` | Database name |
+| `DB_USER` | `fleet_user` | Database username |
+| `DB_PASSWORD` | `fleet_pass` | Database password |
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API URL |
+| `OLLAMA_CHAT_MODEL` | `deepseek-r1:8b` | Chat/reasoning model |
+| `OLLAMA_EMBED_MODEL` | `mxbai-embed-large:latest` | Embedding model |
+| `VEHICLE_ID` | `veh-mum-01` | Emitter vehicle ID |
+| `VEHICLE_REG_NO` | `MH04AB1001` | Emitter vehicle registration |
+| `API_PORT` | `3001` | API server port |
+| `CORS_ORIGIN` | `*` | CORS allowed origin |

@@ -45,18 +45,19 @@ scenariosRouter.post('/:scenarioId/run', async (req: Request, res: Response, nex
     const active = await repo.findActiveRun('replay');
     if (active) {
       ReplayEngine.getInstance()?.stop();
-      await repo.updateRunState(active.id, 'failed');
+      await repo.updateRunState(active.id, 'FAILED');
     }
 
     const run = await repo.startRun({
       scenarioId: req.params['scenarioId']!,
+      mode: 'replay',
       seed: body.seed,
       speedFactor: body.speedFactor,
     });
 
     // Flip fleet mode to replay
     await getPool().query(
-      `UPDATE fleet.fleet_runtime_state SET mode = 'replay', active_run_id = $1, updated_at = NOW() WHERE id = 1`,
+      `UPDATE fleet.fleet_runtime_state SET current_mode = 'replay', active_scenario_run_id = $1, updated_at = NOW() WHERE id = 1`,
       [run.id],
     );
 
@@ -72,7 +73,7 @@ scenariosRouter.post('/runs/:runId/pause', async (req: Request, res: Response, n
   try {
     const repo = new PgScenarioRepository();
     ReplayEngine.getInstance()?.pause();
-    const run = await repo.updateRunState(req.params['runId']!, 'paused');
+    const run = await repo.updateRunState(req.params['runId']!, 'PAUSED');
     return res.json(run);
   } catch (err) {
     next(err);
@@ -83,7 +84,7 @@ scenariosRouter.post('/runs/:runId/pause', async (req: Request, res: Response, n
 scenariosRouter.post('/runs/:runId/resume', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const repo = new PgScenarioRepository();
-    const run = await repo.updateRunState(req.params['runId']!, 'running');
+    const run = await repo.updateRunState(req.params['runId']!, 'RUNNING');
     ReplayEngine.getInstance()?.resume(run);
     return res.json(run);
   } catch (err) {
@@ -96,9 +97,9 @@ scenariosRouter.post('/runs/:runId/reset', async (req: Request, res: Response, n
   try {
     const repo = new PgScenarioRepository();
     ReplayEngine.getInstance()?.stop();
-    const run = await repo.updateRunState(req.params['runId']!, 'failed');
+    const run = await repo.updateRunState(req.params['runId']!, 'RESET');
     await getPool().query(
-      `UPDATE fleet.fleet_runtime_state SET mode = 'idle', active_run_id = NULL, updated_at = NOW() WHERE id = 1`,
+      `UPDATE fleet.fleet_runtime_state SET current_mode = 'replay', active_scenario_run_id = NULL, updated_at = NOW() WHERE id = 1`,
     );
     return res.json(run);
   } catch (err) {
