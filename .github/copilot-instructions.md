@@ -1,6 +1,6 @@
 # Copilot Instructions: ai_fleet
 
-**Project:** AI Fleet - Distributed agent orchestration and governance  
+**Project:** AI Fleet — Fleet operations demo platform with real-time telemetry, alerting, and AI-assisted operations  
 **Repository:** https://github.com/nsin08/ai_fleet  
 **Framework:** space_framework (enforced governance)  
 **Framework Repository:** https://github.com/nsin08/space_framework  
@@ -52,7 +52,7 @@ Agents MUST adapt to the user's environment and avoid guessing.
 
 | Item | Value |
 |------|-------|
-| **Primary Language** | Python 3.11 + Node.js TypeScript |
+| **Primary Language** | Node.js TypeScript (backend + frontend + emitters) |
 | **Repository** | https://github.com/nsin08/ai_fleet |
 | **CODEOWNER** | @nsin08 |
 | **Tech Lead** | @nsin08 |
@@ -72,44 +72,70 @@ Agents MUST adapt to the user's environment and avoid guessing.
 git clone https://github.com/nsin08/ai_fleet
 cd ai_fleet
 
-# Python environment (3.11+)
+# Node.js monorepo
+npm install
+
+# Python tooling (if needed)
 python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
-
-# Node.js environment (TypeScript)
-npm install
 ```
 
 ### Run Tests
 
 ```bash
-# Python tests
-pytest tests/ -v
-
-# TypeScript tests
+# TypeScript (domain + api)
 npm test
+
+# Per package
+npm test --workspace=packages/domain
+npm test --workspace=apps/api
 ```
 
-### Run Locally
+### Run Locally (Docker Compose)
 
 ```bash
-# Python API
-python -m app.main
+# 1. Start core services
+docker compose --profile core up -d db ollama api web
 
-# Node.js services
-npm run dev
+# 2. Apply schema + seed data (first run only)
+docker compose --profile ops run --rm migrator
+docker compose --profile ops run --rm seed-loader
+
+# 3. Check health
+docker compose ps
+curl http://localhost:3001/api/fleet/mode
 ```
 
 ### Linting & Formatting
 
 ```bash
-# Python
-black . && flake8 . && mypy .
-
 # TypeScript
 npm run lint && npm run format
+
+# Type-check
+npm run typecheck
 ```
+
+---
+
+## 3.1 AI Provider (Ollama — Local)
+
+Ollama is the default AI provider. No API key required.
+
+**Available models (detected locally):**
+- `deepseek-r1:8b` — primary chat/reasoning model
+- `mxbai-embed-large:latest` — embeddings
+- `phi:latest` — lightweight fallback
+
+**Required env vars:**
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=deepseek-r1:8b
+OLLAMA_EMBED_MODEL=mxbai-embed-large:latest
+```
+
+All AI calls go through `AiInferencePort` — Ollama is the adapter, not the domain.
 
 ---
 
@@ -123,22 +149,52 @@ ai_fleet/
 │   ├── temp/         # Agent drafts (git-ignored)
 │   ├── issues/       # Issue workspaces (git-ignored)
 │   └── reports/      # Generated reports (git-ignored)
-├── src/
-│   ├── python/       # Python modules (agents, orchestration)
-│   └── typescript/   # Node.js TypeScript services
-├── tests/
-│   ├── unit/         # Unit tests
-│   └── integration/  # Integration tests
-├── docs/             # Documentation, ADRs
+├── apps/
+│   ├── api/          # Node.js TypeScript — REST, WebSocket, replay engine, rule engine
+│   ├── web/          # Next.js + Tailwind — dashboard UI
+│   └── vehicle-emitter/ # Containerized live telemetry emitter (per vehicle type)
+├── packages/
+│   ├── domain/       # Pure entities + port interfaces (no IO, no framework deps)
+│   └── adapters/     # PostgreSQL, Ollama, clock/RNG adapter implementations
+├── db/
+│   └── migrations/   # PostgreSQL schema — 0001_init.sql (complete, ready)
 ├── .github/
 │   ├── ISSUE_TEMPLATE/    # Issue templates (from space_framework)
 │   ├── workflows/         # GitHub Actions (from space_framework)
 │   ├── CODEOWNERS         # Code ownership rules
 │   └── copilot-instructions.md (this file)
-├── requirements.txt  # Python dependencies
-├── package.json      # Node.js dependencies
+├── docker-compose.yml
 └── README.md
 ```
+
+### Key Design Decisions (see `.context/project/ADR/`)
+
+| ADR | Decision |
+|-----|---------|
+| 0001 | Container-first development (Docker Compose as local runtime) |
+| 0002 | Database-backed telemetry replay (PostgreSQL as source of truth) |
+| 0003 | Governance before code (space_framework enforced from day 1) |
+| 0004 | Hexagonal + SOLID + 12-Factor baseline |
+| 0005 | Ollama-first AI provider (local, no API key, swappable) |
+| 0006 | Dual demo modes: replay (deterministic) + live (scaled emitters) |
+
+### Domain Entities
+
+`vehicle`, `driver`, `depot`, `route`, `trip`, `telemetry_point`, `event`, `alert`, `scenario_run`
+
+### Inbound Ports (in `packages/domain`)
+
+- `FleetQueryPort` — vehicle list, vehicle detail, mode query
+- `ScenarioCommandPort` — run/pause/resume/reset replay
+- `TelemetryIngestionPort` — batch telemetry + events from live emitters
+- `AiUseCasePort` — summary, explain-alert, next-actions, chat
+
+### Outbound Ports (in `packages/domain`)
+
+- `TelemetryRepositoryPort`, `EventRepositoryPort`, `AlertRepositoryPort`
+- `ScenarioRepositoryPort`, `EmitterRegistryPort`
+- `AiInferencePort` — Ollama adapter implements this
+- `StreamPublisherPort` — WebSocket gateway implements this
 
 ---
 
@@ -184,7 +240,6 @@ ai_fleet/
 - `feature/42-agent-orchestration`
 - `fix/99-scheduling-timeout`
 - `docs/55-deployment-guide`
-
 ### Commit Message Format (recommended)
 
 **Pattern:** `<type>(<scope>): <subject>`
@@ -285,4 +340,4 @@ You CAN:
 - [x] Ensure `.gitignore` has Rule 11 entries
 - [x] Add CODEOWNERS file in `.github/CODEOWNERS`
 - [x] Configure branch protection rules for `main` (see GitHub UI instructions below)
-- [ ] Commit and push
+- [x] Commit and push
