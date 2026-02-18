@@ -26,6 +26,14 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION fleet.to_epoch_ms_utc(ts TIMESTAMPTZ)
+RETURNS BIGINT
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT (EXTRACT(EPOCH FROM (ts AT TIME ZONE 'UTC')) * 1000)::BIGINT;
+$$;
+
 CREATE TABLE IF NOT EXISTS seed_batches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   seed_version TEXT NOT NULL UNIQUE,
@@ -211,7 +219,7 @@ CREATE TABLE IF NOT EXISTS telemetry_points (
   source_mode TEXT NOT NULL CHECK (source_mode IN ('replay', 'live')),
   source_emitter_id TEXT,
   ts TIMESTAMPTZ NOT NULL,
-  ts_epoch_ms BIGINT GENERATED ALWAYS AS ((EXTRACT(EPOCH FROM ts) * 1000)::BIGINT) STORED,
+  ts_epoch_ms BIGINT GENERATED ALWAYS AS (fleet.to_epoch_ms_utc(ts)) STORED,
   lat NUMERIC(9, 6) NOT NULL,
   lng NUMERIC(9, 6) NOT NULL,
   speed_kph NUMERIC(6, 2) NOT NULL CHECK (speed_kph >= 0),
@@ -393,46 +401,57 @@ CREATE INDEX IF NOT EXISTS idx_emitters_type_status_seen ON emitter_heartbeats(v
 CREATE INDEX IF NOT EXISTS idx_ai_artifacts_scope_created ON ai_artifacts(scope_type, scope_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_artifacts_scenario_created ON ai_artifacts(scenario_run_id, created_at DESC);
 
+DROP TRIGGER IF EXISTS trg_depots_updated_at ON depots;
 CREATE TRIGGER trg_depots_updated_at
 BEFORE UPDATE ON depots
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_geofences_updated_at ON geofences;
 CREATE TRIGGER trg_geofences_updated_at
 BEFORE UPDATE ON geofences
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_routes_updated_at ON routes;
 CREATE TRIGGER trg_routes_updated_at
 BEFORE UPDATE ON routes
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_drivers_updated_at ON drivers;
 CREATE TRIGGER trg_drivers_updated_at
 BEFORE UPDATE ON drivers
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_vehicles_updated_at ON vehicles;
 CREATE TRIGGER trg_vehicles_updated_at
 BEFORE UPDATE ON vehicles
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_scenario_definitions_updated_at ON scenario_definitions;
 CREATE TRIGGER trg_scenario_definitions_updated_at
 BEFORE UPDATE ON scenario_definitions
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_scenario_runs_updated_at ON scenario_runs;
 CREATE TRIGGER trg_scenario_runs_updated_at
 BEFORE UPDATE ON scenario_runs
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_trips_updated_at ON trips;
 CREATE TRIGGER trg_trips_updated_at
 BEFORE UPDATE ON trips
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_emitters_updated_at ON emitter_heartbeats;
 CREATE TRIGGER trg_emitters_updated_at
 BEFORE UPDATE ON emitter_heartbeats
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_alerts_updated_at ON alerts;
 CREATE TRIGGER trg_alerts_updated_at
 BEFORE UPDATE ON alerts
 FOR EACH ROW EXECUTE FUNCTION fleet.set_alert_updated_timestamps();
 
+DROP TRIGGER IF EXISTS trg_vehicle_latest_state_updated_at ON vehicle_latest_state;
 CREATE TRIGGER trg_vehicle_latest_state_updated_at
 BEFORE UPDATE ON vehicle_latest_state
 FOR EACH ROW EXECUTE FUNCTION fleet.set_updated_at();

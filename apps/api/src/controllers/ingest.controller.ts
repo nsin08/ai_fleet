@@ -3,7 +3,10 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PgTelemetryRepository, PgEventRepository } from '@ai-fleet/adapters';
 import type { TelemetryPoint, FleetEvent } from '@ai-fleet/domain';
-import { TelemetrySourceMode } from '@ai-fleet/domain';
+enum TelemetrySourceMode {
+  REPLAY = 'replay',
+  LIVE = 'live',
+}
 import { RuleEngine } from '../services/rules/rule-engine.js';
 
 export const ingestRouter = Router();

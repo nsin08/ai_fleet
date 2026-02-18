@@ -11,21 +11,26 @@ export class PgAlertRepository implements AlertRepositoryPort {
   async createAlert(alert: Alert): Promise<Alert> {
     const { rows } = await getPool().query(
       `INSERT INTO fleet.alerts
-         (id, vehicle_id, ts, event_type, severity, message,
-          status, related_event_ids, assigned_to, meta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (id, vehicle_id, vehicle_reg_no, driver_id, trip_id, scenario_run_id,
+          alert_type, severity, status, title, description, evidence,
+          related_event_ids, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         alert.id,
         alert.vehicleId,
-        alert.ts,
-        alert.eventType,
+        alert.vehicleRegNo,
+        alert.driverId ?? null,
+        alert.tripId ?? null,
+        alert.scenarioRunId ?? null,
+        alert.alertType,
         alert.severity,
-        alert.message,
         alert.status,
-        JSON.stringify(alert.relatedEventIds ?? []),
-        alert.assignedTo ?? null,
-        JSON.stringify(alert.meta ?? {}),
+        alert.title,
+        alert.description,
+        JSON.stringify(alert.evidence ?? {}),
+        alert.relatedEventIds ?? [],
+        alert.note ?? null,
       ],
     );
     return mapAlertRow(rows[0]);
@@ -34,7 +39,7 @@ export class PgAlertRepository implements AlertRepositoryPort {
   async ackAlert(cmd: AckAlertCommand): Promise<Alert> {
     const { rows } = await getPool().query(
       `UPDATE fleet.alerts
-       SET status = 'acknowledged', assigned_to = $2, updated_at = NOW()
+       SET status = 'ACK', acknowledged_by = $2, acknowledged_ts = NOW(), updated_at = NOW(), updated_ts = NOW()
        WHERE id = $1
        RETURNING *`,
       [cmd.alertId, cmd.acknowledgedBy],
@@ -46,9 +51,8 @@ export class PgAlertRepository implements AlertRepositoryPort {
   async closeAlert(alertId: string, resolution?: string): Promise<Alert> {
     const { rows } = await getPool().query(
       `UPDATE fleet.alerts
-       SET status = 'closed',
-           meta = meta || jsonb_build_object('resolution', $2::text),
-           updated_at = NOW()
+       SET status = 'CLOSED', closed_ts = NOW(), note = COALESCE($2, note),
+           updated_at = NOW(), updated_ts = NOW()
        WHERE id = $1
        RETURNING *`,
       [alertId, resolution ?? null],
@@ -68,18 +72,19 @@ export class PgAlertRepository implements AlertRepositoryPort {
     }
     if (filters.status) {
       conditions.push(`status = $${idx++}`);
-      params.push(filters.status);
+      const s = filters.status.toUpperCase();
+      params.push(s === 'ACKNOWLEDGED' ? 'ACK' : s);
     }
     if (filters.severity) {
       conditions.push(`severity = $${idx++}`);
       params.push(filters.severity);
     }
     if (filters.from) {
-      conditions.push(`ts >= $${idx++}`);
+      conditions.push(`created_ts >= $${idx++}`);
       params.push(filters.from);
     }
     if (filters.to) {
-      conditions.push(`ts <= $${idx++}`);
+      conditions.push(`created_ts <= $${idx++}`);
       params.push(filters.to);
     }
 
@@ -88,7 +93,7 @@ export class PgAlertRepository implements AlertRepositoryPort {
     const offset = filters.offset ?? 0;
 
     const { rows } = await getPool().query(
-      `SELECT * FROM fleet.alerts ${where} ORDER BY ts DESC LIMIT $${idx++} OFFSET $${idx++}`,
+      `SELECT * FROM fleet.alerts ${where} ORDER BY created_ts DESC LIMIT $${idx++} OFFSET $${idx++}`,
       [...params, limit, offset],
     );
     return rows.map(mapAlertRow);
@@ -105,7 +110,7 @@ export class PgAlertRepository implements AlertRepositoryPort {
   async countOpenByVehicle(vehicleId: string): Promise<number> {
     const { rows } = await getPool().query(
       `SELECT COUNT(*) AS cnt FROM fleet.alerts
-       WHERE vehicle_id = $1 AND status IN ('open','acknowledged')`,
+       WHERE vehicle_id = $1 AND status IN ('OPEN','ACK')`,
       [vehicleId],
     );
     return parseInt(rows[0]['cnt'] as string, 10);
@@ -115,14 +120,25 @@ export class PgAlertRepository implements AlertRepositoryPort {
 function mapAlertRow(row: Record<string, unknown>): Alert {
   return {
     id: row['id'] as string,
+    createdTs: row['created_ts'] as Date,
+    updatedTs: row['updated_ts'] as Date,
+    closedTs: row['closed_ts'] as Date | undefined,
     vehicleId: row['vehicle_id'] as string,
-    ts: row['ts'] as Date,
-    eventType: row['event_type'] as EventType,
+    vehicleRegNo: row['vehicle_reg_no'] as string,
+    driverId: row['driver_id'] as string | undefined,
+    tripId: row['trip_id'] as string | undefined,
+    scenarioRunId: row['scenario_run_id'] as string | undefined,
+    alertType: row['alert_type'] as EventType,
     severity: row['severity'] as EventSeverity,
-    message: row['message'] as string,
     status: row['status'] as AlertStatus,
-    relatedEventIds: row['related_event_ids'] as string[] | undefined,
-    assignedTo: row['assigned_to'] as string | undefined,
-    meta: row['meta'] as Record<string, unknown> | undefined,
+    title: row['title'] as string,
+    description: row['description'] as string,
+    evidence: (row['evidence'] as Record<string, unknown>) ?? {},
+    relatedEventIds: (row['related_event_ids'] as string[]) ?? [],
+    acknowledgedBy: row['acknowledged_by'] as string | undefined,
+    acknowledgedTs: row['acknowledged_ts'] as Date | undefined,
+    note: row['note'] as string | undefined,
+    createdAt: row['created_at'] as Date,
+    updatedAt: row['updated_at'] as Date,
   };
 }

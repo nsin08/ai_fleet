@@ -1,7 +1,7 @@
-import type { Vehicle, VehicleStatus, VehicleType } from '../entities/vehicle.js';
-import type { Driver } from '../entities/driver.js';
-import type { VehicleLatestState, FleetRuntimeState } from '../entities/fleet-state.js';
-import type { FleetMode } from '../entities/scenario-run.js';
+import type { Vehicle, VehicleStatus, VehicleType } from '../../entities/vehicle.js';
+import type { Driver } from '../../entities/driver.js';
+import type { VehicleLatestState, FleetRuntimeState } from '../../entities/fleet-state.js';
+import type { FleetMode } from '../../entities/scenario-run.js';
 
 // ---------------------------------------------------------------------------
 // Filters
@@ -41,11 +41,11 @@ export interface VehicleDetailResult {
   driver?: Driver;
   latestState: VehicleLatestState;
   /** Rolling telemetry buffer (most recent N points, ordered asc) */
-  telemetryBuffer: import('../entities/telemetry-point.js').TelemetryPoint[];
+  telemetryBuffer: import('../../entities/telemetry-point.js').TelemetryPoint[];
   /** Most recent events */
-  recentEvents: import('../entities/fleet-event.js').FleetEvent[];
+  recentEvents: import('../../entities/fleet-event.js').FleetEvent[];
   /** Active trip, if any */
-  currentTrip?: import('../entities/trip.js').Trip;
+  currentTrip?: import('../../entities/trip.js').Trip;
 }
 
 // ---------------------------------------------------------------------------

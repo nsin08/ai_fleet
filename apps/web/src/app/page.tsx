@@ -10,9 +10,12 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Vehicle {
   id: string;
-  regNo: string;
-  type: string;
+  vehicleRegNo: string;
+  name: string;
+  vehicleType: string;
+  depotId: string;
   status: string;
+  isActive: boolean;
 }
 
 interface Alert {
@@ -40,7 +43,7 @@ export default function HomePage() {
     { refreshInterval: 10000 },
   );
   const { data: alertsResp } = useSWR<{ data: Alert[] }>(
-    `${API}/api/alerts?status=open&limit=10`,
+    `${API}/api/alerts?status=OPEN&limit=10`,
     fetcher,
     { refreshInterval: 5000 },
   );
@@ -117,13 +120,16 @@ export default function HomePage() {
                   key={v.id}
                   className="flex justify-between items-center text-sm border-b border-slate-700 pb-2"
                 >
-                  <span className="font-mono text-blue-200">{v.regNo}</span>
-                  <span className="text-slate-400">{v.type}</span>
+                  <span className="font-mono text-blue-200">{v.vehicleRegNo}</span>
+                  <span className="text-slate-400 truncate max-w-[120px]">{v.name}</span>
+                  <span className="text-slate-500 text-xs">{v.vehicleType}</span>
                   <span
                     className={`px-2 py-0.5 rounded text-xs ${
-                      v.status === 'active'
+                      v.status === 'on_trip'
                         ? 'bg-green-800 text-green-200'
-                        : 'bg-slate-700 text-slate-400'
+                        : v.status === 'idle'
+                          ? 'bg-blue-900 text-blue-300'
+                          : 'bg-slate-700 text-slate-400'
                     }`}
                   >
                     {v.status}

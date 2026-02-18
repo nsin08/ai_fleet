@@ -10,13 +10,13 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fleet -d ai_fleet"]
       interval: 5s
       timeout: 5s
       retries: 10
-    profiles: [core]
+    profiles: [core, ops]
 
   # ── Schema migrator (runs once, exits) ────────────────────────────────────
   migrator:
@@ -42,9 +42,14 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-fleet_dev_pw}
     command: >
       sh -c "
-        for f in /seeds/*.sql; do
+        set -- /seeds/*.sql;
+        if [ \"$$1\" = \"/seeds/*.sql\" ]; then
+          echo \"No seed files found in /seeds; skipping seed-loader.\";
+          exit 0;
+        fi;
+        for f in \"$$@\"; do
           echo \"Applying seed: $$f\";
-          psql -h db -U fleet -d ai_fleet -f $$f;
+          psql -v ON_ERROR_STOP=1 -h db -U fleet -d ai_fleet -f $$f;
         done
       "
     volumes:
@@ -71,7 +76,13 @@ services:
     ports:
       - "3001:3001"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3001/healthz || exit 1"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10

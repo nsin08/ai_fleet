@@ -1,6 +1,6 @@
 import type {
   VehicleRepositoryPort,
-  VehicleListFilters,
+  VehicleRepositoryListFilters,
 } from '@ai-fleet/domain';
 import type { Vehicle, VehicleStatus, VehicleType } from '@ai-fleet/domain';
 import type { VehicleLatestState } from '@ai-fleet/domain';
@@ -8,22 +8,22 @@ import { getPool } from './pool.js';
 
 export class PgVehicleRepository implements VehicleRepositoryPort {
   async findById(vehicleId: string): Promise<Vehicle | null> {
-    const { rows } = await getPool().query<Vehicle>(
+    const { rows } = await getPool().query(
       `SELECT * FROM fleet.vehicles WHERE id = $1`,
       [vehicleId],
     );
-    return rows[0] ?? null;
+    return rows[0] ? mapVehicle(rows[0]) : null;
   }
 
   async findByRegNo(regNo: string): Promise<Vehicle | null> {
-    const { rows } = await getPool().query<Vehicle>(
-      `SELECT * FROM fleet.vehicles WHERE reg_no = $1`,
+    const { rows } = await getPool().query(
+      `SELECT * FROM fleet.vehicles WHERE vehicle_reg_no = $1`,
       [regNo],
     );
-    return rows[0] ?? null;
+    return rows[0] ? mapVehicle(rows[0]) : null;
   }
 
-  async list(filters: VehicleListFilters = {}): Promise<Vehicle[]> {
+  async list(filters: VehicleRepositoryListFilters = {}): Promise<Vehicle[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     let idx = 1;
@@ -33,7 +33,7 @@ export class PgVehicleRepository implements VehicleRepositoryPort {
       params.push(filters.depotId);
     }
     if (filters.type) {
-      conditions.push(`type = $${idx++}`);
+      conditions.push(`vehicle_type = $${idx++}`);
       params.push(filters.type);
     }
     if (filters.status) {
@@ -45,42 +45,44 @@ export class PgVehicleRepository implements VehicleRepositoryPort {
     const limit = filters.limit ?? 100;
     const offset = filters.offset ?? 0;
 
-    const { rows } = await getPool().query<Vehicle>(
-      `SELECT * FROM fleet.vehicles ${where} ORDER BY reg_no LIMIT $${idx++} OFFSET $${idx++}`,
+    const { rows } = await getPool().query(
+      `SELECT * FROM fleet.vehicles ${where} ORDER BY vehicle_reg_no LIMIT $${idx++} OFFSET $${idx++}`,
       [...params, limit, offset],
     );
-    return rows;
+    return rows.map(mapVehicle);
   }
 
   async upsertLatestState(state: VehicleLatestState): Promise<void> {
     await getPool().query(
       `INSERT INTO fleet.vehicle_latest_state
-        (vehicle_id, ts, lat, lng, speed_kmh, heading, odometer_km,
-         fuel_pct, engine_on, idling, status, active_alert_count, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+        (vehicle_id, vehicle_reg_no, last_ts, lat, lng, speed_kph, heading_deg, odometer_km,
+         fuel_pct, ignition, idling, status, active_alert_count, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
        ON CONFLICT (vehicle_id) DO UPDATE SET
-         ts = EXCLUDED.ts,
-         lat = EXCLUDED.lat,
-         lng = EXCLUDED.lng,
-         speed_kmh = EXCLUDED.speed_kmh,
-         heading = EXCLUDED.heading,
-         odometer_km = EXCLUDED.odometer_km,
-         fuel_pct = EXCLUDED.fuel_pct,
-         engine_on = EXCLUDED.engine_on,
-         idling = EXCLUDED.idling,
-         status = EXCLUDED.status,
+         vehicle_reg_no   = EXCLUDED.vehicle_reg_no,
+         last_ts          = EXCLUDED.last_ts,
+         lat              = EXCLUDED.lat,
+         lng              = EXCLUDED.lng,
+         speed_kph        = EXCLUDED.speed_kph,
+         heading_deg      = EXCLUDED.heading_deg,
+         odometer_km      = EXCLUDED.odometer_km,
+         fuel_pct         = EXCLUDED.fuel_pct,
+         ignition         = EXCLUDED.ignition,
+         idling           = EXCLUDED.idling,
+         status           = EXCLUDED.status,
          active_alert_count = EXCLUDED.active_alert_count,
-         updated_at = NOW()`,
+         updated_at       = NOW()`,
       [
         state.vehicleId,
-        state.ts,
+        state.vehicleRegNo,
+        state.lastTs,
         state.lat,
         state.lng,
-        state.speedKmh,
-        state.heading,
+        state.speedKph,
+        state.headingDeg,
         state.odometerKm,
         state.fuelPct,
-        state.engineOn,
+        state.ignition,
         state.idling,
         state.status,
         state.activeAlertCount,
@@ -111,16 +113,43 @@ export class PgVehicleRepository implements VehicleRepositoryPort {
 function mapLatestState(row: Record<string, unknown>): VehicleLatestState {
   return {
     vehicleId: row['vehicle_id'] as string,
-    ts: row['ts'] as Date,
-    lat: row['lat'] as number,
-    lng: row['lng'] as number,
-    speedKmh: row['speed_kmh'] as number,
-    heading: row['heading'] as number | undefined,
-    odometerKm: row['odometer_km'] as number,
-    fuelPct: row['fuel_pct'] as number,
-    engineOn: row['engine_on'] as boolean,
-    idling: row['idling'] as boolean,
+    vehicleRegNo: row['vehicle_reg_no'] as string,
+    driverId: row['driver_id'] as string | undefined,
+    tripId: row['trip_id'] as string | undefined,
     status: row['status'] as VehicleStatus,
-    activeAlertCount: row['active_alert_count'] as number,
+    lastTelemetryId: row['last_telemetry_id'] as number | undefined,
+    lastTs: row['last_ts'] as Date | undefined,
+    lat: row['lat'] as number | undefined,
+    lng: row['lng'] as number | undefined,
+    speedKph: row['speed_kph'] as number | undefined,
+    ignition: row['ignition'] as boolean | undefined,
+    idling: row['idling'] as boolean | undefined,
+    fuelPct: row['fuel_pct'] as number | undefined,
+    engineTempC: row['engine_temp_c'] as number | undefined,
+    batteryV: row['battery_v'] as number | undefined,
+    odometerKm: row['odometer_km'] as number | undefined,
+    headingDeg: row['heading_deg'] as number | undefined,
+    activeAlertCount: (row['active_alert_count'] as number) ?? 0,
+    maintenanceDue: (row['maintenance_due'] as boolean) ?? false,
+    updatedAt: row['updated_at'] as Date,
+  };
+}
+
+function mapVehicle(row: Record<string, unknown>): Vehicle {
+  return {
+    id: row['id'] as string,
+    vehicleRegNo: row['vehicle_reg_no'] as string,
+    name: row['name'] as string,
+    vehicleType: row['vehicle_type'] as VehicleType,
+    depotId: row['depot_id'] as string,
+    fuelCapacityL: row['fuel_capacity_l'] as number,
+    initialOdometerKm: row['initial_odometer_km'] as number,
+    deviceId: row['device_id'] as string,
+    model: row['model'] as string | undefined,
+    manufactureYear: row['manufacture_year'] as number | undefined,
+    status: row['status'] as VehicleStatus,
+    isActive: row['is_active'] as boolean,
+    createdAt: row['created_at'] as Date,
+    updatedAt: row['updated_at'] as Date,
   };
 }

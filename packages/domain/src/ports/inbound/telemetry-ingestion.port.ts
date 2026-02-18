@@ -1,6 +1,6 @@
-import type { TelemetrySourceMode } from '../entities/telemetry-point.js';
-import type { EventType, EventSeverity } from '../entities/fleet-event.js';
-import type { VehicleType } from '../entities/vehicle.js';
+import type { TelemetrySourceMode } from '../../entities/telemetry-point.js';
+import type { EventType, EventSeverity } from '../../entities/fleet-event.js';
+import type { VehicleType } from '../../entities/vehicle.js';
 
 // ---------------------------------------------------------------------------
 // Inbound telemetry record (from emitter or replay engine)

@@ -24,7 +24,7 @@ const listQuerySchema = z.object({
 fleetRouter.get('/mode', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const { rows } = await getPool().query(
-      `SELECT mode, active_run_id, updated_at FROM fleet.fleet_runtime_state WHERE id = 1`,
+      `SELECT current_mode AS mode, active_scenario_run_id AS active_run_id, updated_at FROM fleet.fleet_runtime_state WHERE id = 1`,
     );
     res.json(rows[0] ?? { mode: 'idle', active_run_id: null });
   } catch (err) {

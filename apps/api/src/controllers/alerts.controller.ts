@@ -6,9 +6,9 @@ import { PgAlertRepository } from '@ai-fleet/adapters';
 export const alertsRouter = Router();
 
 const listQuerySchema = z.object({
-  vehicleId: z.string().uuid().optional(),
-  status: z.enum(['open', 'acknowledged', 'closed']).optional(),
-  severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  vehicleId: z.string().optional(),
+  status: z.enum(['OPEN', 'ACK', 'CLOSED', 'open', 'ack', 'closed']).optional(),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'low', 'medium', 'high']).optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),

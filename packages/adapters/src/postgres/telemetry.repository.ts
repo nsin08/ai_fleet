@@ -42,27 +42,38 @@ export class PgTelemetryRepository implements TelemetryRepositoryPort {
 
   async appendMany(points: TelemetryPoint[]): Promise<void> {
     if (points.length === 0) return;
-    // Build a multi-row INSERT; pg driver handles parameterized batches
     const values: unknown[] = [];
     const placeholders = points.map((p, i) => {
-      const base = i * 10;
+      const base = i * 18;
       values.push(
         p.vehicleId,
+        p.vehicleRegNo,
+        p.tripId ?? null,
+        p.scenarioRunId ?? null,
+        p.sourceMode,
+        p.sourceEmitterId ?? null,
         p.ts,
         p.lat,
         p.lng,
-        p.speedKmh,
-        p.heading,
-        p.odometerKm,
+        p.speedKph,
+        p.ignition,
+        p.idling,
         p.fuelPct,
-        p.engineOn,
-        p.sourceMode,
+        p.odometerKm,
+        p.headingDeg ?? null,
+        p.engineTempC ?? null,
+        p.batteryV ?? null,
+        p.rpm ?? null,
       );
-      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10})`;
+      // 18 cols per row
+      const cols = Array.from({ length: 18 }, (_, k) => `$${base + k + 1}`);
+      return `(${cols.join(',')})`;
     });
     await getPool().query(
       `INSERT INTO fleet.telemetry_points
-         (vehicle_id, ts, lat, lng, speed_kmh, heading, odometer_km, fuel_pct, engine_on, source_mode)
+         (vehicle_id, vehicle_reg_no, trip_id, scenario_run_id, source_mode, source_emitter_id,
+          ts, lat, lng, speed_kph, ignition, idling, fuel_pct, odometer_km,
+          heading_deg, engine_temp_c, battery_v, rpm)
        VALUES ${placeholders.join(',')}
        ON CONFLICT DO NOTHING`,
       values,
@@ -72,16 +83,28 @@ export class PgTelemetryRepository implements TelemetryRepositoryPort {
 
 function mapTelemetryRow(row: Record<string, unknown>): TelemetryPoint {
   return {
-    id: row['id'] as string,
+    id: row['id'] as number,
     vehicleId: row['vehicle_id'] as string,
+    vehicleRegNo: row['vehicle_reg_no'] as string,
+    tripId: row['trip_id'] as string | undefined,
+    scenarioRunId: row['scenario_run_id'] as string | undefined,
+    sourceMode: row['source_mode'] as TelemetrySourceMode,
+    sourceEmitterId: row['source_emitter_id'] as string | undefined,
     ts: row['ts'] as Date,
+    tsEpochMs: row['ts_epoch_ms'] as number,
     lat: row['lat'] as number,
     lng: row['lng'] as number,
-    speedKmh: row['speed_kmh'] as number,
-    heading: row['heading'] as number | undefined,
-    odometerKm: row['odometer_km'] as number,
+    speedKph: row['speed_kph'] as number,
+    ignition: row['ignition'] as boolean,
+    idling: row['idling'] as boolean,
     fuelPct: row['fuel_pct'] as number,
-    engineOn: row['engine_on'] as boolean,
-    sourceMode: row['source_mode'] as TelemetrySourceMode,
+    engineTempC: row['engine_temp_c'] as number | undefined,
+    batteryV: row['battery_v'] as number | undefined,
+    odometerKm: row['odometer_km'] as number,
+    headingDeg: row['heading_deg'] as number | undefined,
+    rpm: row['rpm'] as number | undefined,
+    metadata: (row['metadata'] as Record<string, unknown>) ?? {},
+    createdAt: row['created_at'] as Date,
   };
 }
+

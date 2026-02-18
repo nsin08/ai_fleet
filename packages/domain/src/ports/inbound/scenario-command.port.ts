@@ -1,4 +1,4 @@
-import type { ScenarioRun } from '../entities/scenario-run.js';
+import type { ScenarioRun } from '../../entities/scenario-run.js';
 
 export interface RunScenarioCommand {
   scenarioId: string;
