@@ -1,0 +1,70 @@
+# Definition of Ready (DoR) Enforcement
+# Reference: 20-rules/02-definition-of-ready.md
+# Enforces: DoR checklist completion before work starts
+
+name: "Issues: Definition of Ready"
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  check-dor-before-progress:
+    name: Prevent In-Progress without DoR Met
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' && 
+      contains(github.event.issue.labels.*.name, 'state:in-progress')
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const labels = issue.labels.map(l => l.name);
+            
+            // Check for DoR checklist
+            const dorPattern = /## Definition of Ready|## DoR/i;
+            const checkboxPattern = /- \[([ x])\]/g;
+            
+            if (labels.includes('state:in-progress') && !labels.includes('type:epic')) {
+              const hasDor = dorPattern.test(body);
+              const checkboxes = body.match(checkboxPattern) || [];
+              
+              if (!hasDor) {
+                core.setFailed(
+                  `❌ Cannot move to "In Progress" without Definition of Ready
+                  
+                  Add DoR checklist to issue body:
+                  
+                  ## Definition of Ready
+                  - [ ] Success criteria are specific and testable
+                  - [ ] Non-goals explicitly stated
+                  - [ ] Test plan documented
+                  - [ ] Edge cases identified
+                  - [ ] Owner assigned
+                  - [ ] Tech Lead validated feasibility
+                  
+                  See: 20-rules/02-definition-of-ready.md`);
+                return;
+              }
+              
+              // Check if all boxes are checked
+              const allChecked = checkboxes.every(box => box.includes('x') || box.includes('X'));
+              
+              if (!allChecked) {
+                const checked = checkboxes.filter(b => b.includes('x') || b.includes('X')).length;
+                const total = checkboxes.length;
+                
+                core.warning(
+                  `⚠️  Definition of Ready incomplete: ${checked}/${total} items checked
+                  
+                  Please check all DoR items before starting work.
+                  
+                  Current progress: ${Math.round(checked/total*100)}%`);
+              } else {
+                console.log('✅ Definition of Ready satisfied');
+              }
+            }

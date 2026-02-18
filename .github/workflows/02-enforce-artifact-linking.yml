@@ -1,0 +1,131 @@
+name: Enforce Artifact Linking
+
+description: |
+  Validates all artifacts are properly linked for traceability.
+  Reference: 20-rules/04-artifact-linking.md
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+  issues:
+    types: [opened, edited]
+
+jobs:
+  validate-pr-linking:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Check issue link exists
+        id: issue-link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const title = context.payload.pull_request.title || '';
+            
+            // Check for Closes/Fixes/Resolves pattern
+            const patterns = [
+              /[Cc]loses #(\d+)/g,
+              /[Ff]ixes #(\d+)/g,
+              /[Rr]esolves #(\d+)/g
+            ];
+            
+            let linkedIssues = [];
+            for (const pattern of patterns) {
+              const matches = [...body.matchAll(pattern), ...title.matchAll(pattern)];
+              linkedIssues = linkedIssues.concat(matches.map(m => m[1]));
+            }
+            
+            // Deduplicate
+            linkedIssues = [...new Set(linkedIssues)];
+            
+            if (linkedIssues.length === 0) {
+              core.setFailed('PR must link to exactly ONE issue using "Closes #<id>"');
+              return;
+            }
+            
+            if (linkedIssues.length > 1) {
+              core.setFailed(`PR must link to exactly ONE issue. Found: #${linkedIssues.join(', #')}`);
+              return;
+            }
+            
+            core.setOutput('issue_number', linkedIssues[0]);
+            console.log(`✅ Linked to issue #${linkedIssues[0]}`);
+
+      - name: Validate linked issue exists and is a story
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = parseInt('${{ steps.issue-link.outputs.issue_number }}');
+            
+            try {
+              const issue = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              
+              const isStory = issue.data.labels.some(l => 
+                l.name === 'type:story' || l.name === 'type:task'
+              );
+              
+              if (!isStory) {
+                console.log('⚠️ Warning: Linked issue is not labeled as story/task');
+              }
+              
+              console.log(`✅ Issue #${issueNumber} exists`);
+            } catch (e) {
+              core.setFailed(`Issue #${issueNumber} not found`);
+            }
+
+      - name: Validate branch naming
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const pattern = /^(feature|fix|docs|chore|refactor|test|perf)\/\d+-[a-z0-9-]+$/;
+            
+            if (!pattern.test(branch)) {
+              core.setFailed(`Branch name '${branch}' does not match pattern: <type>/<issue-id>-<slug>`);
+              return;
+            }
+            
+            console.log(`✅ Branch naming valid: ${branch}`);
+
+  validate-story-linking:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'type:story')
+    
+    steps:
+      - name: Check parent epic link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const parentMatch = body.match(/[Pp]arent:\s*#(\d+)/);
+            
+            if (!parentMatch) {
+              console.log('⚠️ Warning: Story should have "Parent: #<epic-id>" in body');
+              return;
+            }
+            
+            const epicNumber = parseInt(parentMatch[1]);
+            
+            try {
+              const epic = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: epicNumber
+              });
+              
+              const isEpic = epic.data.labels.some(l => l.name === 'type:epic');
+              
+              if (!isEpic) {
+                console.log(`⚠️ Warning: Parent #${epicNumber} is not labeled as epic`);
+              } else {
+                console.log(`✅ Story linked to Epic #${epicNumber}`);
+              }
+            } catch (e) {
+              console.log(`⚠️ Warning: Parent issue #${epicNumber} not found`);
+            }

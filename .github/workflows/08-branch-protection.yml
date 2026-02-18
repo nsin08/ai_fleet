@@ -1,0 +1,123 @@
+# Branch Protection - Merge Requirements Gate
+# Reference: 20-rules/06-codeowner-merge-only.md
+#
+# Note: This workflow does NOT configure branch protection. It provides a required status check
+# you can enforce via GitHub Branch Protection / Rulesets.
+
+name: "Branch: Protection Status Check"
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  status-check:
+    name: Verify Merge Requirements
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify branch policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('Missing pull_request payload');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = pr.number;
+
+            const requiredApprovalsForBase = (baseRef) => {
+              if (baseRef === 'main') return 2;
+              if (baseRef === 'develop') return 1;
+              if (baseRef.startsWith('release/')) return 2;
+              if (baseRef.startsWith('hotfix/')) return 1;
+              return 1;
+            };
+
+            const { data: prFull } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            const baseRef = prFull.base.ref;
+            const headSha = prFull.head.sha;
+            const author = prFull.user.login;
+            const requiredApprovals = requiredApprovalsForBase(baseRef);
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+
+            // Reduce reviews to latest state per reviewer
+            const latestByUser = new Map();
+            for (const r of reviews) {
+              if (!r.user?.login) continue;
+              latestByUser.set(r.user.login, { state: r.state, commitId: r.commit_id });
+            }
+
+            const changesRequestedUsers = [];
+            const approvalsOnHead = [];
+            const approvalsAny = [];
+
+            for (const [user, r] of latestByUser.entries()) {
+              if (r.state === 'CHANGES_REQUESTED') changesRequestedUsers.push(user);
+              if (r.state === 'APPROVED') {
+                approvalsAny.push(user);
+                if (user !== author && r.commitId === headSha) approvalsOnHead.push(user);
+              }
+            }
+
+            const selfApproved = latestByUser.get(author)?.state === 'APPROVED';
+
+            // Branch up-to-date (best-effort; branch protection should enforce strict status checks)
+            const mergeableState = prFull.mergeable_state; // may be null
+            const upToDate = mergeableState !== 'behind';
+
+            // CODEOWNERS present (warn only; enforced by branch protection setting)
+            let codeownersPresent = false;
+            try {
+              await github.rest.repos.getContent({ owner, repo, path: '.github/CODEOWNERS' });
+              codeownersPresent = true;
+            } catch (e) {
+              codeownersPresent = false;
+            }
+
+            const failures = [];
+            if (prFull.draft) failures.push('PR must not be a draft');
+            if (!upToDate) failures.push('Branch must be up to date with base branch');
+            if (changesRequestedUsers.length > 0) failures.push(`No active "changes requested" reviews (found: ${changesRequestedUsers.join(', ')})`);
+            if (selfApproved) failures.push('No self-approval (PR author cannot approve)');
+            if (approvalsOnHead.length < requiredApprovals) failures.push(`Required approvals on latest commit: ${requiredApprovals} (found: ${approvalsOnHead.length})`);
+
+            const summary = [
+              `Base: ${baseRef}`,
+              `Required approvals: ${requiredApprovals}`,
+              `Approvals (latest commit, excluding author): ${approvalsOnHead.length}${approvalsOnHead.length ? ` (${approvalsOnHead.join(', ')})` : ''}`,
+              `Changes requested: ${changesRequestedUsers.length ? changesRequestedUsers.join(', ') : 'none'}`,
+              `Up to date: ${mergeableState ? (upToDate ? 'yes' : 'no') : 'unknown'}`,
+              `Draft: ${prFull.draft ? 'yes' : 'no'}`,
+              `CODEOWNERS present: ${codeownersPresent ? 'yes' : 'no'}`,
+            ].join('\n');
+
+            console.log(summary);
+
+            if (!codeownersPresent) {
+              core.warning('Missing .github/CODEOWNERS (branch protection should require CODEOWNER reviews)');
+            }
+
+            if (failures.length > 0) {
+              core.setFailed(`Merge requirements not met:\n- ${failures.join('\n- ')}`);
+            }

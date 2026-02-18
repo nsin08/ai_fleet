@@ -1,0 +1,105 @@
+name: Enforce State Machine
+
+description: |
+  Validates workflow state transitions. Blocks unauthorized transitions.
+  Reference: 20-rules/01-state-machine.md
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+env:
+  VALID_STATES: "state:idea,state:approved,state:ready,state:in-progress,state:in-review,state:done,state:released"
+
+jobs:
+  validate-state-transition:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    
+    steps:
+      - name: Get current labels
+        id: labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const stateLabels = issue.data.labels
+              .map(l => l.name)
+              .filter(n => n.startsWith('state:'));
+            
+            core.setOutput('states', stateLabels.join(','));
+            core.setOutput('count', stateLabels.length);
+
+      - name: Validate single state
+        if: steps.labels.outputs.count > 1
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed('Issue cannot have multiple state labels. Found: ' + '${{ steps.labels.outputs.states }}');
+
+      - name: Validate transition
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labelName = '${{ github.event.label.name || "" }}';
+            if (!labelName.startsWith('state:')) {
+              core.notice('Label change is not a state label; skipping transition validation.');
+              return;
+            }
+
+            const validTransitions = {
+              'state:idea': ['state:approved', 'state:rejected'],
+              'state:approved': ['state:ready', 'state:idea'],
+              'state:ready': ['state:in-progress', 'state:approved'],
+              'state:in-progress': ['state:in-review', 'state:ready', 'state:blocked'],
+              'state:in-review': ['state:done', 'state:in-progress'],
+              'state:done': ['state:released'],
+              'state:released': [],
+              'state:rejected': [],
+              'state:blocked': ['state:in-progress', 'state:ready']
+            };
+            
+            const oldState = '${{ github.event.changes?.label?.name || "" }}';
+            const newState = '${{ github.event.label.name }}';
+            
+            if (oldState && !validTransitions[oldState]?.includes(newState)) {
+              core.setFailed(`Invalid transition: ${oldState} → ${newState}`);
+            }
+
+  validate-pr-state:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Check linked issue state
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const match = body.match(/[Cc]loses #(\d+)/);
+            
+            if (!match) {
+              core.setFailed('PR must link to issue with "Closes #<id>"');
+              return;
+            }
+            
+            const issueNumber = parseInt(match[1]);
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+            
+            const hasInProgress = issue.data.labels.some(l => l.name === 'state:in-progress');
+            const hasInReview = issue.data.labels.some(l => l.name === 'state:in-review');
+            
+            if (!hasInProgress && !hasInReview) {
+              core.setFailed(`Issue #${issueNumber} must be in 'state:in-progress' or 'state:in-review' state`);
+            }

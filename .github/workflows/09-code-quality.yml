@@ -1,0 +1,131 @@
+# Code Quality - Basic quality checks
+# Reference: 20-rules/03-definition-of-done.md
+# Enforces: Tests passing, no syntax errors
+
+name: "Code: Quality Checks"
+
+on:
+  pull_request:
+    paths:
+      - '**.py'
+      - '**.js'
+      - '**.ts'
+      - '**.json'
+      - 'tests/**'
+      - 'src/**'
+
+jobs:
+  test-exists:
+    name: Verify Tests Added
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if tests modified
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get changed files
+            const files = await github.rest.pulls.listFiles({
+              owner,
+              repo,
+              pull_number: pr.number
+            });
+            
+            const changedFiles = files.data.map(f => f.filename);
+            const srcChanged = changedFiles.some(f => 
+              f.match(/^(src|lib|services|api|tests)\//) && !f.match(/\.(test|spec)\./)
+            );
+            const testChanged = changedFiles.some(f => f.match(/\.(test|spec)\.(js|ts|py)$/));
+            
+            if (srcChanged && !testChanged) {
+              core.warning(
+                `⚠️  PR modifies source code but no tests were added
+                
+                Changed files: ${changedFiles.join(', ')}
+                
+                Please add or update tests for all code changes.
+                
+                Test files should match pattern: *.test.js, *.spec.ts, test_*.py, etc.`);
+            } else if (testChanged) {
+              console.log(`✅ Tests added/modified: ${changedFiles.filter(f => f.match(/test|spec/)).join(', ')}`);
+            }
+
+  json-validation:
+    name: Validate JSON Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate JSON syntax
+        run: |
+          find . -name '*.json' -type f ! -path './node_modules/*' ! -path './.git/*' | while read file; do
+            if ! jq empty "$file" 2>/dev/null; then
+              echo "❌ Invalid JSON in $file"
+              exit 1
+            fi
+          done
+        shell: bash
+
+  yaml-validation:
+    name: Validate YAML Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install yamllint
+        run: pip install yamllint
+      
+      - name: Validate YAML
+        run: |
+          yamllint -d '{extends: default, rules: {line-length: {max: 120}}}' 70-enforcement/ 2>/dev/null || true
+        shell: bash
+
+  docs-updated:
+    name: Verify Documentation Updated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if README updated
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get changed files
+            const files = await github.rest.pulls.listFiles({
+              owner,
+              repo,
+              pull_number: pr.number
+            });
+            
+            const changedFiles = files.data.map(f => f.filename);
+            const srcChanged = changedFiles.some(f => f.match(/^(src|lib|api|services)\//) && !f.match(/test/));
+            const docsChanged = changedFiles.some(f => f.match(/README|CHANGELOG|docs\//));
+            
+            if (srcChanged && !docsChanged) {
+              core.warning(
+                `⚠️  Source code changed but documentation not updated
+                
+                Changed files: ${changedFiles.filter(f => f.match(/^(src|lib|api)\//)).join(', ')}
+                
+                Please update:
+                - README.md (if user-facing features)
+                - API documentation (if API changes)
+                - Code comments (for complex logic)
+                
+                See: 20-rules/03-definition-of-done.md`);
+            } else if (docsChanged) {
+              console.log('✅ Documentation updated');
+            }

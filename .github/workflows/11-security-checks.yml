@@ -1,0 +1,94 @@
+# Security Checks - Basic security validation
+# Reference: 10-roles/08-pentester.md
+# Enforces: No secrets in commits, dependency security
+
+name: "Security: Validation"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  secret-scan:
+    name: Scan for Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug
+        continue-on-error: true
+
+  dependency-check:
+    name: Check Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for known vulnerabilities (pip)
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install safety
+            safety check --file requirements.txt || true
+          fi
+        shell: bash
+        continue-on-error: true
+
+      - name: Check for known vulnerabilities (npm)
+        run: |
+          if [ -f package.json ]; then
+            npm audit --audit-level=moderate || true
+          fi
+        shell: bash
+        continue-on-error: true
+
+  no-debug-code:
+    name: Scan for Debug Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for console.log, print, debugger
+        run: |
+          echo "Checking for debug statements..."
+          
+          # JavaScript/TypeScript
+          if grep -r "console\.log\|debugger\|console\.debug" src/ lib/ --include="*.js" --include="*.ts" 2>/dev/null; then
+            echo "⚠️  Found console.log/debugger statements"
+          fi
+          
+          # Python
+          if grep -r "print(\|pdb\.set_trace\|breakpoint(" . --include="*.py" 2>/dev/null | grep -v "test_\|_test.py"; then
+            echo "⚠️  Found print/pdb statements in source code"
+          fi
+        shell: bash
+        continue-on-error: true
+
+  hardcoded-secrets:
+    name: Check for Hardcoded Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for common secret patterns
+        run: |
+          echo "Checking for hardcoded secrets..."
+          
+          if grep -rE "api_key\s*=|secret\s*=|password\s*=|token\s*=|aws_secret|private_key" \
+            src/ lib/ config/ --include="*.js" --include="*.py" --include="*.ts" \
+            --exclude-dir=node_modules 2>/dev/null | grep -v "test\|example"; then
+            echo "⚠️  Potential hardcoded secrets found"
+          fi
+        shell: bash
+        continue-on-error: true

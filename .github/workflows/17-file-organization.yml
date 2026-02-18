@@ -1,0 +1,151 @@
+name: Enforce File Organization
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-file-placement:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history to compare with base
+
+      - name: Check test file placement
+        run: |
+          echo "Checking test file placement..."
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          INVALID_TESTS=$(echo "$CHANGED_FILES" | grep -E '^(test_|.*_test\.py|.*_spec\.ts|.*_test\.go)' | grep -v '^tests/' || true)
+
+          if [ -n "$INVALID_TESTS" ]; then
+            echo "ERROR: Test files must be in tests/ directory:"
+            echo "$INVALID_TESTS" | sed 's/^/  - /'
+            echo ""
+            echo "Move these files to tests/unit/ or tests/integration/"
+            exit 1
+          fi
+
+          echo "OK: Test files correctly placed"
+
+      - name: Check for temp files in root
+        run: |
+          echo "Checking for temporary files in wrong location..."
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          TEMP_FILES=$(echo "$CHANGED_FILES" | grep -E '^(debug_|check_|temp_|scratch_|test_scratch)' || true)
+
+          if [ -n "$TEMP_FILES" ]; then
+            echo "ERROR: Temporary/debug files found in wrong location:"
+            echo "$TEMP_FILES" | sed 's/^/  - /'
+            echo ""
+            echo "Move these files to .context/temp/ (default) or a specific issue workspace:"
+            echo "Example: .context/issues/space-framework-123-fix-bug__gh/debug_issue.py"
+            exit 1
+          fi
+
+          echo "OK: No temp files in wrong location"
+
+      - name: Check context document placement (root)
+        run: |
+          echo "Checking context document placement..."
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          MISPLACED_CONTEXT=$(echo "$CHANGED_FILES" | grep -E '^[^/]+_(REPORT|SPEC|DESIGN|ARCHITECTURE|DECISION)\.md$' || true)
+
+          if [ -n "$MISPLACED_CONTEXT" ]; then
+            echo "WARNING: Context documents found in project root:"
+            echo "$MISPLACED_CONTEXT" | sed 's/^/  - /'
+            echo ""
+            echo "Consider moving into .context/project/ or .context/sprint/ for consistency."
+            echo "This is a WARNING. If intentional, add justification in PR description."
+          else
+            echo "OK: No misplaced context documents in project root"
+          fi
+
+      - name: Warn on unclassified .context root files
+        run: |
+          echo "Checking for unclassified .context root files..."
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          UNCLASSIFIED_CONTEXT=$(echo "$CHANGED_FILES" | grep -E '^\.context/[^/]+\.(md|txt|json|yml|yaml)$' | grep -vE '^\.context/(README|00-index)\.md$' || true)
+
+          if [ -n "$UNCLASSIFIED_CONTEXT" ]; then
+            echo "WARNING: Unclassified context files found at .context/ root:"
+            echo "$UNCLASSIFIED_CONTEXT" | sed 's/^/  - /'
+            echo ""
+            echo "Move into one of:"
+            echo "  - .context/project/ (architecture, ADRs, meetings)"
+            echo "  - .context/sprint/  (sprint artifacts)"
+            echo "  - .context/issues/  (issue workspaces, gitignored)"
+            echo "  - .context/temp/    (drafts, scratch, gitignored)"
+            echo ""
+            echo "This is a WARNING. If intentional, add justification in PR description."
+          else
+            echo "OK: No unclassified .context root files"
+          fi
+
+      - name: Check for .gitignore violations
+        run: |
+          echo "Checking .gitignore compliance..."
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          IGNORED_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.context/(tasks-|issues/|temp/|reports/)' || true)
+
+          if [ -n "$IGNORED_FILES" ]; then
+            echo "ERROR: Files in .context/temp/, .context/issues/, .context/reports/ (and legacy .context/tasks-*/) should be git-ignored:"
+            echo "$IGNORED_FILES" | sed 's/^/  - /'
+            echo ""
+            echo "These are local-only workspaces/reports and should not be committed."
+            echo "Verify .gitignore contains:"
+            echo "  - .context/temp/"
+            echo "  - .context/issues/"
+            echo "  - .context/reports/"
+            echo "  - .context/tasks-*/   # legacy (deprecated)"
+            exit 1
+          fi
+
+          echo "OK: No .gitignore violations"
+
+      - name: Comment on PR if violations found
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `## File Organization Violation (Rule 11)
+
+            This PR violates **Rule 11: File Organization & Context Hygiene**.
+
+            ### Required Actions:
+
+            - **Tests** must be in \`tests/unit/\` or \`tests/integration/\`
+            - **Temp/debug scripts** must be in \`.context/temp/\` or \`.context/issues/{...}__gh/\`
+            - **Project docs** should be in \`.context/project/\`
+            - **Sprint docs** should be in \`.context/sprint/\`
+            - **Temp/issue workspaces** must be git-ignored
+
+            ### Reference:
+            - Rule: \`20-rules/11-file-organization.md\`
+            - Enforcement: \`70-enforcement/17-file-organization.yml\`
+
+            Please fix the violations and push an update.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

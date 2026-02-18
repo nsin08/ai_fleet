@@ -1,0 +1,105 @@
+# Issue Validation - Enforce Issue Quality Rules
+# Reference: 20-rules/02-definition-of-ready.md
+# Enforces: Issue template, labels, success criteria
+
+name: "Issue: Validation"
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  issue-has-labels:
+    name: Ensure Issue Has Required Labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check labels present
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            // Required: one of these labels
+            const requiredLabels = ['type:idea', 'type:epic', 'type:story', 'type:task', 'type:bug', 'type:question'];
+            const hasRequired = labels.some(l => requiredLabels.includes(l));
+            
+            if (!hasRequired && !issue.pull_request) {
+              core.warning(
+                `⚠️  Issue #${issue.number} should have a type label
+                
+                Please add one of: ${requiredLabels.join(', ')}
+                
+                - type:idea: New feature request
+                - type:epic: Large feature or initiative
+                - type:story: Implementable unit of work
+                - type:task: Engineering task
+                - type:bug: Bug report
+                - type:question: Question or discussion`);
+            } else {
+              console.log(`✅ Issue has label(s): ${labels.join(', ')}`);
+            }
+
+  epic-has-problem-statement:
+    name: Validate Epic Has Problem Statement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check epic format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            if (labels.includes('type:epic')) {
+              const body = issue.body || '';
+              
+              // Check for key sections
+              const hasProblem = body.includes('## Problem') || body.includes('## Business Value');
+              const hasSuccess = body.includes('## Success Criteria') || body.includes('## Acceptance Criteria');
+              const hasNonGoals = body.includes('## Non-Goals') || body.includes('## Out of Scope');
+              
+              if (!hasProblem || !hasSuccess || !hasNonGoals) {
+                core.warning(
+                  `⚠️  Epic #${issue.number} missing required sections
+                  
+                  ✅ Has Problem/Business Value: ${hasProblem}
+                  ✅ Has Success Criteria: ${hasSuccess}
+                  ✅ Has Non-Goals: ${hasNonGoals}
+                  
+                  Use template: .github/ISSUE_TEMPLATE/02-epic.md (from 50-templates/02-epic.md)`);
+              }
+            }
+
+  story-has-success-criteria:
+    name: Validate Story Has Success Criteria
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check story format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            if (labels.includes('type:story')) {
+              const body = issue.body || '';
+              
+              // Check for key sections
+              const hasSuccess = body.includes('## Success Criteria') || body.includes('- [ ]');
+              const hasOwner = body.includes('**Owner:**') || body.includes('Assigned to');
+              
+              if (!hasSuccess) {
+                core.warning(
+                  `⚠️  Story #${issue.number} missing success criteria
+                  
+                  Please add testable success criteria:
+                  
+                  ## Success Criteria
+                  - [ ] Criterion 1 is met
+                  - [ ] Criterion 2 is met
+                  - [ ] Criterion 3 is met
+                  
+                  Use template: .github/ISSUE_TEMPLATE/03-story.md (from 50-templates/03-story.md)`);
+              }
+            }

@@ -1,0 +1,156 @@
+# Release Automation - Create releases with version bumping and release notes
+# Reference: 20-rules/09-versioning.md
+# Automates: Version tagging, release notes generation
+
+name: "Release: Automation"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'lib/**'
+      - 'package.json'
+      - 'setup.py'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: false
+
+jobs:
+  check-for-release:
+    name: Check if Release Needed
+    runs-on: ubuntu-latest
+    outputs:
+      should-release: ${{ steps.check.outputs.should-release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for unreleased commits
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: tags } = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            
+            const lastTag = tags.length > 0 ? tags[0].name : null;
+            console.log(`Last tag: ${lastTag}`);
+            
+            // Check for commits since last tag
+            let shouldRelease = true;
+            let version = null;
+            
+            if (lastTag) {
+              const { data: commits } = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: lastTag,
+                head: context.ref
+              });
+              
+              shouldRelease = commits.commits.length > 0;
+              console.log(`Commits since ${lastTag}: ${commits.commits.length}`);
+              
+              if (shouldRelease) {
+                // Determine version bump based on commits
+                const messages = commits.commits.map(c => c.commit.message).join(' ');
+                
+                // Extract current version
+                const currentVersion = lastTag.replace('v', '');
+                const [major, minor, patch] = currentVersion.split('.').map(Number);
+                
+                // Bump based on commit messages
+                if (messages.includes('BREAKING') || messages.includes('breaking:')) {
+                  version = `${major + 1}.0.0`;
+                } else if (messages.includes('feat:') || messages.includes('feature:')) {
+                  version = `${major}.${minor + 1}.0`;
+                } else {
+                  version = `${major}.${minor}.${patch + 1}`;
+                }
+              }
+            } else {
+              version = '1.0.0';
+            }
+            
+            core.setOutput('should-release', shouldRelease);
+            core.setOutput('version', version);
+            console.log(`Will release: ${shouldRelease}, Version: ${version}`);
+
+  generate-release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    needs: check-for-release
+    if: needs.check-for-release.outputs.should-release == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.check-for-release.outputs.version }}';
+            
+            // Get last tag
+            const { data: tags } = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            
+            const lastTag = tags.length > 0 ? tags[0].name : 'v0.0.0';
+            
+            // Get commits since last release
+            const { data: commits } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: lastTag,
+              head: 'main'
+            });
+            
+            // Group commits by type
+            const features = [];
+            const fixes = [];
+            const other = [];
+            
+            commits.commits.forEach(commit => {
+              const message = commit.commit.message;
+              const sha = commit.sha.substring(0, 7);
+              
+              if (message.includes('feat:') || message.includes('feature:')) {
+                features.push(`- ${message.split('\n')[0]} (${sha})`);
+              } else if (message.includes('fix:') || message.includes('bug:')) {
+                fixes.push(`- ${message.split('\n')[0]} (${sha})`);
+              } else {
+                other.push(`- ${message.split('\n')[0]} (${sha})`);
+              }
+            });
+            
+            let releaseNotes = `## v${version}\n\n`;
+            
+            if (features.length > 0) {
+              releaseNotes += `### ✨ Features\n${features.join('\n')}\n\n`;
+            }
+            
+            if (fixes.length > 0) {
+              releaseNotes += `### 🐛 Fixes\n${fixes.join('\n')}\n\n`;
+            }
+            
+            if (other.length > 0) {
+              releaseNotes += `### 📝 Other\n${other.join('\n')}\n\n`;
+            }
+            
+            releaseNotes += `**Full Changelog:** [${lastTag}...v${version}](https://github.com/${{ github.repository }}/compare/${lastTag}...v${version})`;
+            
+            core.setOutput('release-notes', releaseNotes);
+            console.log(releaseNotes);

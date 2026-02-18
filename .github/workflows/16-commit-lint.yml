@@ -1,0 +1,65 @@
+# Commit Message Linting
+# Enforces conventional commit format
+
+name: "Commits: Conventional Format"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  commit-lint:
+    name: Lint Commit Messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get commits in PR
+            const commits = await github.rest.pulls.listCommits({
+              owner,
+              repo,
+              pull_number: pr.number
+            });
+            
+            const validPattern = /^(feat|fix|chore|docs|refactor|test|perf|style|ci|revert)(!)?:(.*)/;
+            const invalid = [];
+            
+            commits.data.forEach(commit => {
+              const message = commit.commit.message.split('\n')[0];
+              if (!validPattern.test(message)) {
+                invalid.push(`${commit.sha.substring(0, 7)}: ${message}`);
+              }
+            });
+            
+            if (invalid.length > 0) {
+              core.warning(
+                `⚠️  ${invalid.length} commit(s) don't follow conventional format
+                
+                Invalid commits:
+                ${invalid.map(m => `- ${m}`).join('\n')}
+                
+                Format: <type>(<scope>): <message>
+                
+                Types: feat, fix, chore, docs, refactor, test, perf, style, ci, revert
+                Use ! for breaking changes: feat!: breaking change
+                
+                Examples:
+                - feat(auth): Add login endpoint
+                - fix: Resolve null pointer exception
+                - docs: Update README
+                - feat!(api): Change response format
+                
+                Note: Squash/amend commits to fix format.`);
+            } else {
+              console.log(`✅ All ${commits.data.length} commit(s) follow conventional format`);
+            }

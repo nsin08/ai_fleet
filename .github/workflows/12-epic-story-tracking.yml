@@ -1,0 +1,101 @@
+# Epic & Story Tracking - Maintain issue hierarchy
+# Reference: 20-rules/04-artifact-linking.md
+# Enforces: Story parent links, Epic status tracking
+
+name: "Issues: Epic/Story Tracking"
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [closed]
+
+jobs:
+  validate-story-parent:
+    name: Validate Story Has Parent Epic
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            // Only check stories (not epics)
+            if (labels.includes('type:story') && !labels.includes('type:epic')) {
+              const body = issue.body || '';
+              const parentPattern = /parent:\s*#(\d+)|epic:\s*#(\d+)|epic\s*issue:\s*#(\d+)/i;
+              const match = body.match(parentPattern);
+              
+              if (!match) {
+                core.warning(
+                  `⚠️  Story #${issue.number} missing parent Epic link
+                  
+                  Please add to story body:
+                  
+                  ## Parent Epic
+                  #<epic-issue-number>
+                  
+                  Example:
+                  
+                  ## Parent Epic
+                  #42
+                  
+                  See: 20-rules/04-artifact-linking.md`);
+              } else {
+                const epicNum = match[1] || match[2] || match[3];
+                console.log(`✅ Story #${issue.number} linked to Epic #${epicNum}`);
+              }
+            }
+
+  close-epic-on-completion:
+    name: Auto-Close Completed Epics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            const title = pr.title;
+            
+            // Extract issue number from "Closes #123"
+            const closesPattern = /closes\s+#(\d+)/i;
+            const match = body.match(closesPattern) || title.match(closesPattern);
+            
+            if (!match) return;
+            
+            const storyNum = match[1];
+            
+            // Get the story to find its parent epic
+            try {
+              const story = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: storyNum
+              });
+              
+              const storyBody = story.data.body || '';
+              const epicPattern = /parent:\s*#(\d+)|epic:\s*#(\d+)/i;
+              const epicMatch = storyBody.match(epicPattern);
+              
+              if (epicMatch) {
+                const epicNum = epicMatch[1] || epicMatch[2];
+                console.log(`Story #${storyNum} is part of Epic #${epicNum}`);
+                
+                // Check if all stories in epic are closed
+                const epic = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: epicNum
+                });
+                
+                if (epic.data.state === 'open') {
+                  console.log(`Epic #${epicNum} still open. Check other stories.`);
+                }
+              }
+            } catch (error) {
+              console.log(`Could not find story #${storyNum}`);
+            }

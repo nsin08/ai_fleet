@@ -1,0 +1,15 @@
+# Code Owners for AI Fleet Repository
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @nsin08
+
+# Governance files require CODEOWNER
+/.github/CODEOWNERS @nsin08
+/.github/copilot-instructions.md @nsin08
+/.github/workflows/ @nsin08
+
+# Context and documentation
+/.context/ @nsin08
+/docs/ @nsin08
+/README.md @nsin08

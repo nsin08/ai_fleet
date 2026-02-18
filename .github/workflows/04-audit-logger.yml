@@ -1,0 +1,111 @@
+name: Audit Logger
+
+description: |
+  Logs all significant actions for audit trail.
+  Reference: 20-rules/10-ai-agent-boundaries.md
+
+on:
+  issues:
+    types: [opened, edited, closed, labeled, unlabeled, assigned]
+  pull_request:
+    types: [opened, closed, edited, ready_for_review, converted_to_draft]
+  pull_request_review:
+    types: [submitted, dismissed]
+  push:
+    branches: [main]
+
+jobs:
+  log-issue-events:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    
+    steps:
+      - name: Log issue event
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = {
+              timestamp: new Date().toISOString(),
+              event_type: 'issue',
+              action: context.payload.action,
+              actor: context.actor,
+              issue_number: context.issue.number,
+              issue_title: context.payload.issue.title,
+              labels: context.payload.issue.labels.map(l => l.name)
+            };
+            
+            console.log('📋 AUDIT LOG:', JSON.stringify(event, null, 2));
+            
+            // In production, send to logging service:
+            // await fetch(process.env.AUDIT_ENDPOINT, {
+            //   method: 'POST',
+            //   body: JSON.stringify(event)
+            // });
+
+  log-pr-events:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Log PR event
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = {
+              timestamp: new Date().toISOString(),
+              event_type: 'pull_request',
+              action: context.payload.action,
+              actor: context.actor,
+              pr_number: context.payload.pull_request.number,
+              pr_title: context.payload.pull_request.title,
+              source_branch: context.payload.pull_request.head.ref,
+              target_branch: context.payload.pull_request.base.ref,
+              merged: context.payload.pull_request.merged || false
+            };
+            
+            console.log('📋 AUDIT LOG:', JSON.stringify(event, null, 2));
+
+  log-review-events:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_review'
+    
+    steps:
+      - name: Log review event
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = {
+              timestamp: new Date().toISOString(),
+              event_type: 'review',
+              action: context.payload.action,
+              actor: context.actor,
+              pr_number: context.payload.pull_request.number,
+              review_state: context.payload.review.state,
+              reviewer: context.payload.review.user.login
+            };
+            
+            console.log('📋 AUDIT LOG:', JSON.stringify(event, null, 2));
+
+  log-merge-events:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Log merge to main
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = {
+              timestamp: new Date().toISOString(),
+              event_type: 'merge_to_main',
+              actor: context.actor,
+              commit_sha: context.sha,
+              commit_message: context.payload.head_commit?.message || 'N/A'
+            };
+            
+            console.log('🔒 AUDIT LOG (CRITICAL):', JSON.stringify(event, null, 2));
+            
+            // Alert on direct push to main (should only be via PR merge)
+            if (!context.payload.head_commit?.message?.includes('Merge pull request')) {
+              console.log('⚠️ WARNING: Direct push to main detected!');
+            }
