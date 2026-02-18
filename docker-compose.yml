@@ -51,21 +51,6 @@ services:
       - ./db/seeds:/seeds:ro
     profiles: [ops]
 
-  # ── Ollama (local AI) ──────────────────────────────────────────────────────
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    volumes:
-      - ollama_models:/root/.ollama
-    ports:
-      - "11434:11434"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    profiles: [core]
-
   # ── API (Node.js + Express + WebSocket) ───────────────────────────────────
   api:
     build:
@@ -75,11 +60,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
     environment:
       DATABASE_URL: postgres://fleet:${POSTGRES_PASSWORD:-fleet_dev_pw}@db:5432/ai_fleet
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-deepseek-r1:8b}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-mxbai-embed-large:latest}
       PORT: 3001
@@ -129,4 +112,3 @@ services:
 
 volumes:
   pgdata:
-  ollama_models:

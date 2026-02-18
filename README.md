@@ -21,13 +21,14 @@ A full-stack, container-first fleet management platform designed for demo and ev
 
 - Docker + Docker Compose
 - Node.js 20+, Python 3.11+ (for local dev outside containers)
-- Ollama running locally: `ollama serve`
-- Recommended model: `deepseek-r1:8b` or `phi` (already available if you ran `ollama list`)
+- Ollama running on your laptop (host): `ollama serve` — **not** managed by Docker Compose
+- Recommended model: `deepseek-r1:8b` or `phi` (verify with `ollama list`)
+- API containers reach host Ollama via `http://host.docker.internal:11434`
 
 ### Start Core Services
 
 ```bash
-docker compose --profile core up -d db ollama api web
+docker compose --profile core up -d db api web
 ```
 
 ### Run Migrations + Seed Data
