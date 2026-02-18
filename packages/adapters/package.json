@@ -1,0 +1,25 @@
+{
+  "name": "@ai-fleet/adapters",
+  "version": "0.1.0",
+  "description": "PostgreSQL, Ollama, clock/RNG adapter implementations for ai-fleet",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai-fleet/domain": "*",
+    "pg": "^8.11.3",
+    "ollama": "^0.5.9"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.2",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@ai-fleet/vehicle-emitter",
+  "version": "0.1.0",
+  "description": "Containerized live telemetry emitter per vehicle",
+  "type": "module",
+  "main": "./dist/emitter.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/emitter.js",
+    "dev": "tsx watch src/emitter.ts",
+    "clean": "rimraf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "undici": "^6.13.0"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5",
+    "tsx": "^4.7.2",
+    "typescript": "^5.3.3"
+  }
+}

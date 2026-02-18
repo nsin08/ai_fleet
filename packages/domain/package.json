@@ -1,0 +1,27 @@
+{
+  "name": "@ai-fleet/domain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure domain entities and port interfaces — no IO, no framework dependencies",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "rimraf": "^5.0.0"
+  }
+}

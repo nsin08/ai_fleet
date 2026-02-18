@@ -1,0 +1,753 @@
+Below is an MVP Product Doc you can paste into Codex and ask it to generate the repo + UI + simulator.
+
+Project: Fleet Management Dashboard Demo (Simulated Telematics + AI Assistant)
+Goal
+Build a demo-grade fleet management web app that feels real without hardware by simulating vehicle telemetry + alerts, and layering AI-assisted insights (summaries, explanations, recommendations, Q&A).
+
+Target demo audience
+Product/engineering stakeholders evaluating a fleet platform concept
+
+Shows “map + operations + alerts + AI copilot” in ~3–5 minutes
+
+Non-goals (for MVP)
+Real GPS devices / CAN bus integration
+
+Real routing optimization
+
+Production auth/security/compliance
+
+Payments/billing
+
+Core User Personas
+Fleet Manager: monitors vehicles, reacts to alerts, reduces costs
+
+Ops Supervisor: wants quick summary + action list
+
+Safety Officer: wants risky drivers, incident reports
+
+MVP Scope (must-have)
+Pages / Screens
+Login (fake / optional)
+
+Single “Enter Dashboard” button or simple mock login.
+
+Fleet Overview
+
+Map with vehicles (20–100 simulated)
+
+Vehicle list/table with filters
+
+KPIs: Active Trips, Alerts Today, Idle Vehicles, Avg Driver Score, Fuel Anomalies
+
+Clicking a vehicle opens Vehicle Detail
+
+Vehicle Detail
+
+Live telemetry cards: speed, ignition, fuel %, engine temp, odometer, battery
+
+Trip timeline (start/stop, route plan vs actual)
+
+Event stream (overspeed, harsh brake, geofence breach, fuel drop, DTC fault)
+
+Charts: speed over time, fuel over time
+
+Buttons: “Explain this vehicle” (AI), “Generate incident report” (AI)
+
+Alerts Center
+
+List of alerts with severity, time, vehicle, driver
+
+Filters: type, severity, date range
+
+Clicking alert shows details + AI explanation + recommended actions
+
+AI Copilot Sidebar (global)
+
+Chat-like input + suggested prompts
+
+Can answer questions using current simulated data
+
+Can generate “Daily Summary” and “Top Cost Leaks”
+
+Scenario Runner (Demo Mode)
+
+Buttons: Run Scenario A/B/C
+
+Each scenario injects events in a scripted way so the demo is repeatable.
+
+AI-Assisted Features (MVP)
+AI is allowed to be template-driven or LLM-backed, but outputs must look intelligent.
+
+Required AI actions
+Daily Summary
+
+“Today: X alerts, Y fuel anomalies, Z vehicles due for service soon…”
+
+Explain Alert
+
+For a selected alert, provide:
+
+What happened (plain English)
+
+Likely cause (best-effort)
+
+Evidence (reference telemetry points)
+
+Recommended next actions
+
+Next Best Actions
+
+List actions like: Call driver, Reroute, Schedule service, Investigate fuel theft
+
+Ask Fleet AI (Q&A)
+
+Examples:
+
+“Which vehicles are wasting fuel today and why?”
+
+“Top 3 risky drivers this week.”
+
+“Show vehicles likely needing maintenance soon.”
+
+AI safety/guardrails (simple)
+No personal data beyond fake driver names/IDs
+
+Always cite which vehicles/events it used (e.g., “Vehicle V-014, fuel drop at 14:22”)
+
+Simulation Requirements (Telematics + Events)
+Entities
+Vehicle: id, name, type (car/van/truck), depot, status, odometer, fuelCapacity
+
+Driver: id, name, licenseId (fake), safetyScore (0–100)
+
+Trip: id, vehicleId, driverId, startTime, endTime?, plannedRoute (polyline or list of points), actualRoute
+
+TelemetryPoint: ts, vehicleId, lat, lng, speedKph, ignition, fuelPct, engineTempC, batteryV, rpm?
+
+Event: id, ts, vehicleId, driverId, type, severity, message, metadata
+
+Update cadence
+Every vehicle emits telemetry every 2 seconds (configurable)
+
+Backend streams to frontend via WebSocket or SSE
+
+Event generation (rule-based)
+Overspeed: speedKph > 90 for >10s
+
+Harsh brake: decel threshold (simulate using sudden speed drops)
+
+Geofence breach: leaving depot/city bounding box
+
+Fuel anomaly: fuelPct drops > 8% within 2 minutes (when ignition true)
+
+DTC / Maintenance: random or scripted fault + “service due in <200 km”
+
+Fatigue: driving continuously > 2 hours (simulated time)
+
+Demo Scenarios (scripted and repeatable)
+Scenario A: Off-route + Geofence breach
+Vehicle V-007 deviates from planned route
+
+Trigger “Off-route” warning then “Geofence breach”
+
+AI recommends call driver + reroute + log incident
+
+Scenario B: Fuel Theft Anomaly
+Vehicle V-014 fuelPct drops sharply while parked/slow
+
+Alert: Fuel anomaly (High)
+
+AI explains suspicion + shows fuel chart + suggests investigation steps
+
+Scenario C: Maintenance Fault (DTC)
+Vehicle V-021 triggers engine temp rising + DTC event
+
+AI recommends service scheduling + downtime estimate (rough)
+
+Each scenario should:
+
+Highlight the vehicle on map
+
+Pin the alert in Alerts Center
+
+Provide a one-click “Generate Incident Report”
+
+Tech Stack (preferred)
+Frontend: Next.js (React + TypeScript), Tailwind, Mapbox/Leaflet, Recharts/ECharts
+
+Backend: Node.js (Express/Fastify) or FastAPI
+
+Realtime: WebSocket (socket.io) OR SSE
+
+Storage:
+
+In-memory for MVP OR SQLite
+
+Seed JSON for vehicles/drivers
+
+AI layer:
+
+Option 1: Template + rules (no external calls)
+
+Option 2: LLM call (abstract behind /api/ai/* so it’s swappable)
+
+API Contract (minimal)
+REST
+GET /api/fleet/vehicles -> list vehicles + latest state
+
+GET /api/fleet/vehicles/:id -> vehicle detail + current trip
+
+GET /api/alerts?severity=&type= -> alerts list
+
+POST /api/scenarios/run body: { scenarioId: "A"|"B"|"C" }
+
+Realtime
+WS /ws/telemetry
+
+messages:
+
+{ type:"telemetry", data: TelemetryPoint }
+
+{ type:"event", data: Event }
+
+{ type:"vehicle_state", data:{ vehicleId, status, driverId, tripId } }
+
+AI endpoints
+POST /api/ai/summary body: { range:"today" }
+
+POST /api/ai/explain-alert body: { alertId }
+
+POST /api/ai/next-actions body: { vehicleId? , alertId? }
+
+POST /api/ai/chat body: { message, contextScope:"fleet"|"vehicle", vehicleId? }
+
+AI endpoints must pull from the current simulated dataset (latest telemetry + events).
+
+UI Requirements (feel “enterprise”)
+Left nav: Overview, Alerts, (optional) Reports, Settings
+
+Top bar: search vehicle, scenario buttons, “AI Copilot” toggle
+
+Status colors: green/amber/red
+
+Vehicle status chips: On Trip / Idle / Alerting / Maintenance Due
+
+Acceptance Criteria (Definition of Done)
+Fleet overview shows moving vehicles on a map with live updates
+
+Alerts generate automatically + via scenario runner
+
+Vehicle detail shows live charts + event stream
+
+AI actions work and reference real simulated events/vehicles
+
+Scenario buttons reliably produce the same story every time
+
+Entire demo runs locally with one command (or docker compose)
+
+Seed Data (example expectations)
+30 vehicles across 2–3 depots (e.g., Bengaluru, Hyderabad, Pune)
+
+40 drivers
+
+Vehicle types: 60% cars, 30% vans, 10% trucks
+
+At any moment: ~40% active trips, ~30% idle, ~30% parked/off
+
+Codex Instructions (what to generate)
+Generate:
+
+Monorepo (frontend + backend) with run scripts
+
+Simulator engine with scenario runner
+
+Map + table UI, vehicle detail UI, alerts UI
+
+AI endpoints with rule-based reasoning (LLM optional toggle)
+
+Clean types/interfaces shared between FE/BE
+
+If you want, I can also paste a ready-to-use JSON schema + sample seed dataset + 3 scenario scripts (so Codex can implement immediately).
+
+
+Show less
+
+
+
+
+
+
+
+If you want, I can also paste a ready-to-use JSON schema + sample seed dataset + 3 scenario scripts (so Codex can implement immediately). -> yes
+
+ChatGPT7:43 PM
+Cool — here’s a ready-to-use JSON schema + seed dataset + 3 scenario scripts you can paste into Codex.
+
+1) JSON Schema (types)
+entities.json (master data)
+{
+  "depots": [
+    { "id": "D-BLR", "name": "Bengaluru Depot", "lat": 12.9716, "lng": 77.5946, "radiusKm": 25 },
+    { "id": "D-HYD", "name": "Hyderabad Depot", "lat": 17.385, "lng": 78.4867, "radiusKm": 25 }
+  ],
+  "drivers": [
+    {
+      "id": "DR-001",
+      "name": "Arjun N.",
+      "licenseId": "KA-FAKE-001",
+      "baseSafetyScore": 78
+    }
+  ],
+  "vehicles": [
+    {
+      "id": "V-007",
+      "name": "Car-007",
+      "type": "car",
+      "depotId": "D-BLR",
+      "fuelCapacityL": 45,
+      "initialOdometerKm": 52340,
+      "deviceId": "DEV-007"
+    }
+  ],
+  "geofences": [
+    {
+      "id": "GF-BLR",
+      "name": "Bengaluru City Fence",
+      "type": "circle",
+      "centerLat": 12.9716,
+      "centerLng": 77.5946,
+      "radiusKm": 35
+    }
+  ]
+}
+runtime_state.json (in-memory runtime state)
+{
+  "vehicleState": {
+    "V-007": {
+      "status": "on_trip",
+      "driverId": "DR-007",
+      "tripId": "T-20260218-007",
+      "lastTelemetryTs": 0,
+      "lastKnown": {
+        "lat": 12.9716,
+        "lng": 77.5946,
+        "speedKph": 0,
+        "ignition": false,
+        "fuelPct": 78,
+        "engineTempC": 76,
+        "batteryV": 12.6,
+        "odometerKm": 52340
+      }
+    }
+  },
+  "alerts": [],
+  "events": [],
+  "telemetryBuffer": {
+    "V-007": []
+  }
+}
+TelemetryPoint
+{
+  "ts": 1730000000000,
+  "vehicleId": "V-007",
+  "lat": 12.9716,
+  "lng": 77.5946,
+  "speedKph": 48,
+  "ignition": true,
+  "fuelPct": 77.8,
+  "engineTempC": 84,
+  "batteryV": 12.4,
+  "odometerKm": 52341.2,
+  "headingDeg": 120
+}
+Event
+{
+  "id": "EVT-20260218-0001",
+  "ts": 1730000000000,
+  "vehicleId": "V-007",
+  "driverId": "DR-007",
+  "type": "OVERSPEED|HARSH_BRAKE|GEOFENCE_BREACH|FUEL_ANOMALY|DTC_FAULT|OFF_ROUTE|FATIGUE",
+  "severity": "LOW|MEDIUM|HIGH",
+  "message": "Human readable summary",
+  "metadata": { "key": "value" }
+}
+Alert (what Alerts Center shows)
+{
+  "id": "ALT-20260218-0001",
+  "createdTs": 1730000000000,
+  "vehicleId": "V-014",
+  "driverId": "DR-014",
+  "type": "FUEL_ANOMALY",
+  "severity": "HIGH",
+  "status": "OPEN|ACK|CLOSED",
+  "title": "Fuel anomaly detected",
+  "description": "Fuel dropped 12% within 90s while speed < 5kph",
+  "evidence": {
+    "telemetryTsRange": [1730000000000, 1730000090000],
+    "eventIds": ["EVT-..."]
+  }
+}
+2) Sample Seed Dataset (30 vehicles, 40 drivers)
+seed_entities.json
+{
+  "depots": [
+    { "id": "D-BLR", "name": "Bengaluru Depot", "lat": 12.9716, "lng": 77.5946, "radiusKm": 25 },
+    { "id": "D-HYD", "name": "Hyderabad Depot", "lat": 17.385, "lng": 78.4867, "radiusKm": 25 }
+  ],
+  "geofences": [
+    { "id": "GF-BLR", "name": "Bengaluru City Fence", "type": "circle", "centerLat": 12.9716, "centerLng": 77.5946, "radiusKm": 35 },
+    { "id": "GF-HYD", "name": "Hyderabad City Fence", "type": "circle", "centerLat": 17.385, "centerLng": 78.4867, "radiusKm": 35 }
+  ],
+  "drivers": [
+    { "id": "DR-001", "name": "Arjun N.", "licenseId": "KA-FAKE-001", "baseSafetyScore": 78 },
+    { "id": "DR-002", "name": "Meera S.", "licenseId": "KA-FAKE-002", "baseSafetyScore": 86 },
+    { "id": "DR-003", "name": "Ravi K.", "licenseId": "KA-FAKE-003", "baseSafetyScore": 71 },
+    { "id": "DR-004", "name": "Fatima A.", "licenseId": "KA-FAKE-004", "baseSafetyScore": 82 },
+    { "id": "DR-005", "name": "Dev P.", "licenseId": "KA-FAKE-005", "baseSafetyScore": 74 },
+    { "id": "DR-006", "name": "Isha M.", "licenseId": "KA-FAKE-006", "baseSafetyScore": 90 },
+    { "id": "DR-007", "name": "Nikhil R.", "licenseId": "KA-FAKE-007", "baseSafetyScore": 69 },
+    { "id": "DR-008", "name": "Sana H.", "licenseId": "KA-FAKE-008", "baseSafetyScore": 84 },
+    { "id": "DR-009", "name": "Kiran J.", "licenseId": "KA-FAKE-009", "baseSafetyScore": 77 },
+    { "id": "DR-010", "name": "Vikram D.", "licenseId": "KA-FAKE-010", "baseSafetyScore": 72 },
+
+    { "id": "DR-011", "name": "Ayaan Q.", "licenseId": "TS-FAKE-011", "baseSafetyScore": 81 },
+    { "id": "DR-012", "name": "Neha L.", "licenseId": "TS-FAKE-012", "baseSafetyScore": 88 },
+    { "id": "DR-013", "name": "Rahul B.", "licenseId": "TS-FAKE-013", "baseSafetyScore": 70 },
+    { "id": "DR-014", "name": "Suhana T.", "licenseId": "TS-FAKE-014", "baseSafetyScore": 79 },
+    { "id": "DR-015", "name": "Manoj G.", "licenseId": "TS-FAKE-015", "baseSafetyScore": 67 },
+    { "id": "DR-016", "name": "Priya V.", "licenseId": "TS-FAKE-016", "baseSafetyScore": 91 },
+    { "id": "DR-017", "name": "Imran Z.", "licenseId": "TS-FAKE-017", "baseSafetyScore": 76 },
+    { "id": "DR-018", "name": "Asha C.", "licenseId": "TS-FAKE-018", "baseSafetyScore": 83 },
+    { "id": "DR-019", "name": "Rohit S.", "licenseId": "TS-FAKE-019", "baseSafetyScore": 73 },
+    { "id": "DR-020", "name": "Diya N.", "licenseId": "TS-FAKE-020", "baseSafetyScore": 87 },
+
+    { "id": "DR-021", "name": "Sameer P.", "licenseId": "KA-FAKE-021", "baseSafetyScore": 75 },
+    { "id": "DR-022", "name": "Ananya R.", "licenseId": "KA-FAKE-022", "baseSafetyScore": 89 },
+    { "id": "DR-023", "name": "Yusuf K.", "licenseId": "KA-FAKE-023", "baseSafetyScore": 66 },
+    { "id": "DR-024", "name": "Shreya M.", "licenseId": "KA-FAKE-024", "baseSafetyScore": 85 },
+    { "id": "DR-025", "name": "Ganesh T.", "licenseId": "KA-FAKE-025", "baseSafetyScore": 68 },
+    { "id": "DR-026", "name": "Pooja S.", "licenseId": "KA-FAKE-026", "baseSafetyScore": 92 },
+    { "id": "DR-027", "name": "Farhan A.", "licenseId": "KA-FAKE-027", "baseSafetyScore": 74 },
+    { "id": "DR-028", "name": "Naina K.", "licenseId": "KA-FAKE-028", "baseSafetyScore": 80 },
+    { "id": "DR-029", "name": "Sandeep V.", "licenseId": "KA-FAKE-029", "baseSafetyScore": 71 },
+    { "id": "DR-030", "name": "Zoya H.", "licenseId": "KA-FAKE-030", "baseSafetyScore": 86 },
+
+    { "id": "DR-031", "name": "Amit J.", "licenseId": "TS-FAKE-031", "baseSafetyScore": 77 },
+    { "id": "DR-032", "name": "Kavya R.", "licenseId": "TS-FAKE-032", "baseSafetyScore": 90 },
+    { "id": "DR-033", "name": "Naveen P.", "licenseId": "TS-FAKE-033", "baseSafetyScore": 69 },
+    { "id": "DR-034", "name": "Hina S.", "licenseId": "TS-FAKE-034", "baseSafetyScore": 84 },
+    { "id": "DR-035", "name": "Prakash M.", "licenseId": "TS-FAKE-035", "baseSafetyScore": 72 },
+    { "id": "DR-036", "name": "Riya A.", "licenseId": "TS-FAKE-036", "baseSafetyScore": 88 },
+    { "id": "DR-037", "name": "Salman K.", "licenseId": "TS-FAKE-037", "baseSafetyScore": 70 },
+    { "id": "DR-038", "name": "Irfan N.", "licenseId": "TS-FAKE-038", "baseSafetyScore": 79 },
+    { "id": "DR-039", "name": "Lavanya P.", "licenseId": "TS-FAKE-039", "baseSafetyScore": 91 },
+    { "id": "DR-040", "name": "Harish R.", "licenseId": "TS-FAKE-040", "baseSafetyScore": 73 }
+  ],
+  "vehicles": [
+    { "id": "V-001", "name": "Car-001", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 41020, "deviceId": "DEV-001" },
+    { "id": "V-002", "name": "Car-002", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 38510, "deviceId": "DEV-002" },
+    { "id": "V-003", "name": "Car-003", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 55210, "deviceId": "DEV-003" },
+    { "id": "V-004", "name": "Car-004", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 60112, "deviceId": "DEV-004" },
+    { "id": "V-005", "name": "Van-005", "type": "van", "depotId": "D-BLR", "fuelCapacityL": 60, "initialOdometerKm": 72310, "deviceId": "DEV-005" },
+    { "id": "V-006", "name": "Car-006", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 29800, "deviceId": "DEV-006" },
+    { "id": "V-007", "name": "Car-007", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 52340, "deviceId": "DEV-007" },
+    { "id": "V-008", "name": "Van-008", "type": "van", "depotId": "D-BLR", "fuelCapacityL": 60, "initialOdometerKm": 81200, "deviceId": "DEV-008" },
+    { "id": "V-009", "name": "Car-009", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 46780, "deviceId": "DEV-009" },
+    { "id": "V-010", "name": "Truck-010", "type": "truck", "depotId": "D-BLR", "fuelCapacityL": 120, "initialOdometerKm": 128500, "deviceId": "DEV-010" },
+
+    { "id": "V-011", "name": "Car-011", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 39220, "deviceId": "DEV-011" },
+    { "id": "V-012", "name": "Car-012", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 51110, "deviceId": "DEV-012" },
+    { "id": "V-013", "name": "Van-013", "type": "van", "depotId": "D-HYD", "fuelCapacityL": 60, "initialOdometerKm": 68900, "deviceId": "DEV-013" },
+    { "id": "V-014", "name": "Car-014", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 45670, "deviceId": "DEV-014" },
+    { "id": "V-015", "name": "Car-015", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 33210, "deviceId": "DEV-015" },
+    { "id": "V-016", "name": "Van-016", "type": "van", "depotId": "D-HYD", "fuelCapacityL": 60, "initialOdometerKm": 74400, "deviceId": "DEV-016" },
+    { "id": "V-017", "name": "Car-017", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 28990, "deviceId": "DEV-017" },
+    { "id": "V-018", "name": "Truck-018", "type": "truck", "depotId": "D-HYD", "fuelCapacityL": 120, "initialOdometerKm": 140320, "deviceId": "DEV-018" },
+    { "id": "V-019", "name": "Car-019", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 61210, "deviceId": "DEV-019" },
+    { "id": "V-020", "name": "Car-020", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 47880, "deviceId": "DEV-020" },
+
+    { "id": "V-021", "name": "Car-021", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 70510, "deviceId": "DEV-021" },
+    { "id": "V-022", "name": "Van-022", "type": "van", "depotId": "D-BLR", "fuelCapacityL": 60, "initialOdometerKm": 83510, "deviceId": "DEV-022" },
+    { "id": "V-023", "name": "Car-023", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 36510, "deviceId": "DEV-023" },
+    { "id": "V-024", "name": "Car-024", "type": "car", "depotId": "D-BLR", "fuelCapacityL": 45, "initialOdometerKm": 59870, "deviceId": "DEV-024" },
+    { "id": "V-025", "name": "Truck-025", "type": "truck", "depotId": "D-BLR", "fuelCapacityL": 120, "initialOdometerKm": 151200, "deviceId": "DEV-025" },
+
+    { "id": "V-026", "name": "Car-026", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 40120, "deviceId": "DEV-026" },
+    { "id": "V-027", "name": "Van-027", "type": "van", "depotId": "D-HYD", "fuelCapacityL": 60, "initialOdometerKm": 90210, "deviceId": "DEV-027" },
+    { "id": "V-028", "name": "Car-028", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 52210, "deviceId": "DEV-028" },
+    { "id": "V-029", "name": "Car-029", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 61290, "deviceId": "DEV-029" },
+    { "id": "V-030", "name": "Car-030", "type": "car", "depotId": "D-HYD", "fuelCapacityL": 45, "initialOdometerKm": 35510, "deviceId": "DEV-030" }
+  ]
+}
+3) Planned Routes (simple polylines)
+routes.json
+{
+  "routes": [
+    {
+      "id": "R-BLR-1",
+      "name": "BLR Outer Ring Loop",
+      "city": "Bengaluru",
+      "points": [
+        { "lat": 12.9716, "lng": 77.5946 },
+        { "lat": 12.9352, "lng": 77.6245 },
+        { "lat": 12.9584, "lng": 77.7050 },
+        { "lat": 12.9990, "lng": 77.6400 },
+        { "lat": 12.9716, "lng": 77.5946 }
+      ]
+    },
+    {
+      "id": "R-HYD-1",
+      "name": "HYD City Loop",
+      "city": "Hyderabad",
+      "points": [
+        { "lat": 17.3850, "lng": 78.4867 },
+        { "lat": 17.4123, "lng": 78.4570 },
+        { "lat": 17.4300, "lng": 78.5000 },
+        { "lat": 17.3900, "lng": 78.5200 },
+        { "lat": 17.3850, "lng": 78.4867 }
+      ]
+    }
+  ]
+}
+4) Scenario Scripts (repeatable “story mode”)
+Script format
+The simulator runs a timeline.
+
+Each step can:
+
+set vehicle target path (planned vs deviated)
+
+inject telemetry overrides (speed/fuel/temp)
+
+emit events + alerts
+
+scenarios.json
+{
+  "scenarios": [
+    {
+      "id": "A",
+      "name": "Off-route + Geofence Breach",
+      "description": "Vehicle V-007 deviates from planned route then exits city fence.",
+      "vehicleId": "V-007",
+      "driverId": "DR-007",
+      "routeId": "R-BLR-1",
+      "timelineSec": 180,
+      "steps": [
+        { "t": 0, "action": "START_TRIP", "data": { "tripId": "T-A-007", "startAtDepot": "D-BLR" } },
+        { "t": 10, "action": "SET_MODE", "data": { "mode": "FOLLOW_PLANNED_ROUTE", "speedKph": 45 } },
+        { "t": 40, "action": "INJECT_EVENT", "data": { "type": "OFF_ROUTE", "severity": "MEDIUM", "message": "Vehicle deviated from planned path by 600m" } },
+        { "t": 45, "action": "SET_MODE", "data": { "mode": "DEVIATE_ROUTE", "offsetMeters": 1200, "speedKph": 52 } },
+        { "t": 80, "action": "INJECT_EVENT", "data": { "type": "GEOFENCE_BREACH", "severity": "HIGH", "message": "Exited Bengaluru city geofence (GF-BLR)" } },
+        { "t": 85, "action": "CREATE_ALERT", "data": { "type": "GEOFENCE_BREACH", "severity": "HIGH", "title": "Geofence breach", "description": "V-007 exited GF-BLR while on trip" } },
+        { "t": 120, "action": "SET_MODE", "data": { "mode": "RETURN_TO_ROUTE", "speedKph": 40 } },
+        { "t": 170, "action": "END_TRIP", "data": { "endReason": "Recovered route" } }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "Fuel Theft Anomaly",
+      "description": "Vehicle V-014 fuel drops sharply while speed is near zero.",
+      "vehicleId": "V-014",
+      "driverId": "DR-014",
+      "routeId": "R-HYD-1",
+      "timelineSec": 180,
+      "steps": [
+        { "t": 0, "action": "START_TRIP", "data": { "tripId": "T-B-014", "startAtDepot": "D-HYD" } },
+        { "t": 15, "action": "SET_TELEMETRY_OVERRIDE", "data": { "speedKph": 25, "fuelPct": 62.0, "ignition": true } },
+        { "t": 60, "action": "SET_TELEMETRY_OVERRIDE", "data": { "speedKph": 2, "fuelPct": 61.8, "ignition": true } },
+        { "t": 75, "action": "SET_TELEMETRY_OVERRIDE", "data": { "speedKph": 0, "fuelPct": 49.5, "ignition": true } },
+        { "t": 76, "action": "INJECT_EVENT", "data": { "type": "FUEL_ANOMALY", "severity": "HIGH", "message": "Fuel dropped 12.3% within 90s while vehicle nearly stationary" } },
+        { "t": 78, "action": "CREATE_ALERT", "data": { "type": "FUEL_ANOMALY", "severity": "HIGH", "title": "Fuel anomaly detected", "description": "Sudden fuel drop detected for V-014. Possible theft/leak." } },
+        { "t": 120, "action": "SET_TELEMETRY_OVERRIDE", "data": { "speedKph": 18, "fuelPct": 49.2, "ignition": true } },
+        { "t": 170, "action": "END_TRIP", "data": { "endReason": "Flagged for investigation" } }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "Maintenance Fault (DTC + Overheat)",
+      "description": "Vehicle V-021 engine temp rises, DTC fault triggers, maintenance recommended.",
+      "vehicleId": "V-021",
+      "driverId": "DR-021",
+      "routeId": "R-BLR-1",
+      "timelineSec": 210,
+      "steps": [
+        { "t": 0, "action": "START_TRIP", "data": { "tripId": "T-C-021", "startAtDepot": "D-BLR" } },
+        { "t": 20, "action": "SET_MODE", "data": { "mode": "FOLLOW_PLANNED_ROUTE", "speedKph": 42 } },
+        { "t": 70, "action": "SET_TELEMETRY_OVERRIDE", "data": { "engineTempC": 96 } },
+        { "t": 95, "action": "SET_TELEMETRY_OVERRIDE", "data": { "engineTempC": 104 } },
+        { "t": 96, "action": "INJECT_EVENT", "data": { "type": "DTC_FAULT", "severity": "HIGH", "message": "DTC P0217: Engine Overtemperature Condition", "metadata": { "dtc": "P0217" } } },
+        { "t": 98, "action": "CREATE_ALERT", "data": { "type": "DTC_FAULT", "severity": "HIGH", "title": "Engine overheat (DTC)", "description": "V-021 engine temp exceeded threshold; service required." } },
+        { "t": 130, "action": "SET_TELEMETRY_OVERRIDE", "data": { "speedKph": 10, "engineTempC": 101 } },
+        { "t": 160, "action": "INJECT_EVENT", "data": { "type": "MAINTENANCE_DUE", "severity": "MEDIUM", "message": "Service due within 180 km", "metadata": { "dueInKm": 180 } } },
+        { "t": 200, "action": "END_TRIP", "data": { "endReason": "Sent to service" } }
+      ]
+    }
+  ]
+}
+5) Rule Engine (events from live telemetry)
+Paste this as instructions for Codex (logic, not code):
+
+Overspeed: if speedKph > 90 for >10s → emit OVERSPEED event, and optionally alert if sustained >30s.
+
+Harsh brake: if speedKph drops by >=25 within <=3s → emit HARSH_BRAKE.
+
+Fuel anomaly: if fuelPct drop >=8 within <=120s while speedKph < 5 OR ignition=false → FUEL_ANOMALY (HIGH).
+
+Geofence breach: if vehicle outside depot/city circle fence for >15s → GEOFENCE_BREACH.
+
+Off-route: compute distance from planned polyline; if >500m for >20s → OFF_ROUTE.
+
+DTC fault: scripted or random; also trigger when engineTempC > 102.
+
+6) AI “Reasoning Templates” (for explain + summary)
+ai_templates.json
+{
+  "explainAlertTemplate": {
+    "FUEL_ANOMALY": {
+      "whatHappened": "Fuel level dropped sharply in a short time while the vehicle was nearly stationary.",
+      "likelyCauses": [
+        "Possible fuel theft (siphoning) during a stop",
+        "Fuel sensor calibration issue",
+        "Leak (less likely if drop is sudden and then stabilizes)"
+      ],
+      "recommendedActions": [
+        "Call driver immediately to confirm stop reason",
+        "Verify last stop location and time",
+        "Cross-check fuel receipts and compare expected consumption",
+        "Inspect tank and fuel line at next depot"
+      ]
+    },
+    "GEOFENCE_BREACH": {
+      "whatHappened": "Vehicle exited the configured geofence while on an active trip.",
+      "likelyCauses": [
+        "Driver took a wrong turn or unscheduled detour",
+        "Route deviation due to traffic",
+        "Potential misuse if detour is unexplained"
+      ],
+      "recommendedActions": [
+        "Contact driver to confirm reason for deviation",
+        "Suggest reroute back to planned path",
+        "Log incident if repeated behaviour"
+      ]
+    },
+    "DTC_FAULT": {
+      "whatHappened": "Vehicle reported a diagnostic trouble code and abnormal engine temperature.",
+      "likelyCauses": [
+        "Cooling system issue (coolant/thermostat/fan)",
+        "Heavy load + long idle time",
+        "Sensor anomaly (verify with trend)"
+      ],
+      "recommendedActions": [
+        "Reduce speed / pull over if temperature remains high",
+        "Schedule service slot and mark vehicle as maintenance priority",
+        "Avoid assigning long trips until resolved"
+      ]
+    }
+  }
+}
+If you want, I can also paste one single “Codex super-prompt” that tells it exactly how to wire these files into: simulator → WS stream → UI pages → AI endpoints.
+
+
+Show less
+
+
+
+
+
+
+
+one single “Codex super-prompt” -> yes
+
+ChatGPT7:46 PM
+Paste this into Codex as-is (edit names/stack if you want). It’s designed to generate a working monorepo from the JSON files + scripts we defined.
+
+You are Codex. Generate a complete, runnable monorepo for a “Fleet Management Dashboard Demo” with simulated telematics + alerts + an AI copilot layer.
+
+PRIMARY GOAL
+- Produce a demo-grade web app that feels real without hardware by simulating vehicle telemetry + events and streaming them to a dashboard.
+- Include a scenario runner (A/B/C) that triggers repeatable “story mode” incidents.
+- Include an AI layer (rule/template-based by default) that generates summaries, explains alerts, and answers common fleet questions using the live simulated data.
+
+TECH STACK (must use)
+- Monorepo: pnpm workspaces (or npm workspaces if pnpm not available)
+- Frontend: Next.js + TypeScript + Tailwind
+- Backend: Node.js + TypeScript + Express (or Fastify) + ws (WebSocket)
+- Shared types: packages/shared with TypeScript types used by both FE and BE
+- Storage: in-memory runtime state + JSON seed files in backend; no DB needed
+- Map: Leaflet (free) with OpenStreetMap tiles (avoid requiring Mapbox keys)
+- Charts: Recharts
+
+DELIVERABLES
+1) Repo structure with scripts:
+   - /apps/web (Next.js)
+   - /apps/api (Node backend)
+   - /packages/shared (types + small utils)
+   - root package.json with workspaces and “dev” script that runs both apps
+2) Backend simulator engine:
+   - Loads seed_entities.json, routes.json, scenarios.json, ai_templates.json from /apps/api/data/
+   - Initializes runtime_state in memory
+   - Generates telemetry every 2 seconds for each vehicle
+   - Streams telemetry + events + vehicle_state over WebSocket at /ws
+   - Implements rule-based event detection (overspeed, harsh brake, fuel anomaly, geofence breach, off-route, DTC fault trigger on engineTemp)
+   - Implements scenario runner: POST /api/scenarios/run {scenarioId:"A"|"B"|"C"} that schedules timeline steps and injects events/overrides deterministically
+3) Backend REST APIs:
+   - GET /api/fleet/vehicles -> list vehicles with latest known state + driver + status
+   - GET /api/fleet/vehicles/:id -> vehicle + current trip + recent telemetry buffer + recent events
+   - GET /api/alerts -> list alerts with filters (type, severity, status)
+   - POST /api/alerts/:id/ack -> ack an alert
+   - POST /api/scenarios/run -> run scenario A/B/C
+4) Backend AI endpoints (NO external LLM calls in default mode):
+   - POST /api/ai/summary {range:"today"} -> uses current alerts/events to produce a readable summary + “next best actions”
+   - POST /api/ai/explain-alert {alertId} -> uses ai_templates + evidence from runtime telemetry/events; must include “Evidence” list referencing vehicleId + timestamps
+   - POST /api/ai/next-actions {vehicleId?, alertId?} -> prioritized actions
+   - POST /api/ai/chat {message, contextScope:"fleet"|"vehicle", vehicleId?} -> interpret common questions via simple intent routing (top risky drivers, fuel wastage vehicles, vehicles needing maintenance soon, active alerts). Always cite which vehicles/events were used.
+   - Keep AI logic in a module so it can be swapped to real LLM later.
+5) Frontend pages:
+   - / (Overview): Map + vehicle table + KPI cards + “Scenario A/B/C” buttons + “AI Copilot” drawer toggle
+   - /alerts: Alerts Center list + detail panel + “Explain (AI)” button + “Ack” button
+   - /vehicles/[id]: Vehicle Detail with live telemetry cards + charts (speed & fuel) + event stream + “Generate Incident Report” button
+6) Realtime wiring:
+   - Web app connects to ws://localhost:3001/ws (or whatever port) and updates UI live
+   - Maintain a client-side store (Zustand or React state) for vehicles + telemetry buffers
+7) UI/UX requirements:
+   - Left nav: Overview, Alerts
+   - Top bar: search by vehicle id/name, scenario buttons, AI Copilot button
+   - Status chips: On Trip / Idle / Parked / Alerting / Maintenance Due
+   - Severity colors: LOW (blue/gray), MEDIUM (amber), HIGH (red)
+   - Make it “enterprise” clean with Tailwind components.
+8) Demo behavior:
+   - On startup: 30 vehicles loaded; ~40% on_trip, ~30% idle, rest parked.
+   - Vehicles move along route polylines in their city; headings update.
+   - Telemetry looks plausible: speed fluctuates, fuel decreases slowly, engine temp stable unless scenario/override.
+   - Scenario A: V-007 off-route then geofence breach then recovery (events + alert).
+   - Scenario B: V-014 sudden fuel drop at low speed (event + HIGH alert) then stabilizes.
+   - Scenario C: V-021 engine temp rises + DTC event + HIGH alert + maintenance due event.
+9) Local run instructions:
+   - README.md with step-by-step: install, dev, ports, how to run scenarios.
+   - One command to run both: “pnpm dev” (or “npm run dev”).
+10) Code quality:
+   - Strong typing, clear folder structure, comments on simulator + scenario engine
+   - No secrets/keys required
+   - Minimal dependencies
+
+DATA FILES (must create these exact files under /apps/api/data/)
+- seed_entities.json  (use the exact content already provided in the chat: depots, geofences, drivers, vehicles)
+- routes.json         (use the exact content already provided)
+- scenarios.json      (use the exact content already provided)
+- ai_templates.json   (use the exact content already provided)
+
+IMPORTANT IMPLEMENTATION DETAILS
+- Deterministic simulation: use a seeded RNG so the demo is stable between runs.
+- Telemetry buffer per vehicle: keep last 5 minutes (or last N=150 points).
+- Off-route distance: implement a simple polyline distance check (approx is fine).
+- Geofence: circle distance calc (haversine).
+- Harsh brake: detect speed drop >=25 within <=3s from telemetry buffer.
+- Fuel anomaly: drop >=8 within <=120s while speed<5 or ignition=false.
+- Alerts: created from scenario steps or rule engine; store in memory; include evidence with time range and related eventIds.
+
+OUTPUT FORMAT
+- Generate all code + files. Do not ask questions. Do not omit major components.
+- Provide the full repository tree and file contents.
+- Ensure the project boots successfully with the documented commands.
+
+Now implement the entire project.

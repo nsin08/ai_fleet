@@ -18,6 +18,8 @@ This directory contains durable project documentation and architectural artifact
 | `./README.md` | This file |
 | `./ADR/` | Architectural Decision Records |
 | `./ARCHITECTURE.md` | System architecture and design |
+| `./DB_SCHEMA.md` | PostgreSQL schema reference (v1) and migration artifact pointer |
+| `./COMPONENTS_AND_API_CONTRACTS.md` | Component boundaries and API/WebSocket contracts |
 | `./RUNBOOKS/` | Operational runbooks |
 | `./MEETINGS/` | Meeting notes and decisions |
 
@@ -60,9 +62,11 @@ See `.github/copilot-instructions.md` for details.
 ## Getting Started
 
 1. **Read the architecture:** See `./ARCHITECTURE.md` (if available)
-2. **Check ADRs:** See `./ADR/` for design decisions
-3. **Review runbooks:** See `./RUNBOOKS/` for operational procedures
-4. **Load framework context:** Use `@space_framework` in Copilot to load rules
+2. **Read DB schema:** See `./DB_SCHEMA.md` and `../../db/migrations/0001_init.sql`
+3. **Read contracts:** See `./COMPONENTS_AND_API_CONTRACTS.md`
+4. **Check ADRs:** See `./ADR/` for design decisions
+5. **Review runbooks:** See `./RUNBOOKS/` for operational procedures (including seeding/map realism, demo scenarios, and Docker Compose scaling)
+6. **Load framework context:** Use `@space_framework` in Copilot to load rules
 
 ---
 
