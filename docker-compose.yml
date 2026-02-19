@@ -16,7 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    profiles: [core, ops]
+    profiles: [core, ops, live]
 
   # ── Schema migrator (runs once, exits) ────────────────────────────────────
   migrator:
@@ -86,7 +86,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    profiles: [core]
+    profiles: [core, live]
 
   # ── Web (Next.js) ──────────────────────────────────────────────────────────
   web:

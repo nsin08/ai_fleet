@@ -15,6 +15,8 @@ export interface VehicleDetail extends Vehicle {
   latestTelemetry?: TelemetryPoint[];
   openAlerts?: Alert[];
   recentEvents?: FleetEvent[];
+  currentTrip?: TripSummary | null;
+  previousTrips?: TripSummary[];
 }
 
 export interface TelemetryPoint {
@@ -145,4 +147,78 @@ export interface ScenarioRun {
   metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TripStatus = 'planned' | 'active' | 'paused' | 'completed' | 'cancelled';
+
+export interface TripSummary {
+  id: string;
+  vehicleId: string;
+  vehicleRegNo: string;
+  driverId: string;
+  driverName?: string;
+  routeId?: string;
+  routeName?: string;
+  scenarioRunId?: string;
+  status: TripStatus;
+  startedAt: string;
+  endedAt?: string;
+  startDepotId?: string;
+  startDepotName?: string;
+  endDepotId?: string;
+  endDepotName?: string;
+  plannedDistanceKm?: number;
+  actualDistanceKm?: number;
+  endReason?: string;
+  stopCount?: number;
+}
+
+export interface TripStop {
+  id: number;
+  tripId: string;
+  seq: number;
+  stopType: 'traffic' | 'delivery' | 'depot' | 'break' | 'incident';
+  lat: number;
+  lng: number;
+  arrivedAt: string;
+  departedAt?: string;
+  reason?: string;
+}
+
+export interface TripDetail extends TripSummary {
+  stops: TripStop[];
+}
+
+export interface InventoryTotals {
+  total: number;
+  onTrip: number;
+  idle: number;
+  parked: number;
+  alerting: number;
+  maintenanceDue: number;
+  activeTrips: number;
+  completedTrips: number;
+}
+
+export interface InventoryByType {
+  vehicleType: string;
+  count: number;
+  onTrip: number;
+  idle: number;
+  parked: number;
+}
+
+export interface InventoryByDepot {
+  depotId: string;
+  depotName?: string;
+  count: number;
+  onTrip: number;
+  idle: number;
+  parked: number;
+}
+
+export interface InventorySnapshot {
+  totals: InventoryTotals;
+  byType: InventoryByType[];
+  byDepot: InventoryByDepot[];
 }

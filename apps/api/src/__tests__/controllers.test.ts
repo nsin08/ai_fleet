@@ -172,11 +172,15 @@ describe('GET /api/fleet/vehicles/:vehicleId', () => {
     mockVehicleRepo.findById.mockResolvedValueOnce(mockVehicle);
     mockTelemetryRepo.readLatestN.mockResolvedValueOnce([]);
     mockAlertRepo.listAlerts.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app).get('/api/fleet/vehicles/veh-mum-01').expect(200);
     expect(res.body.vehicle.id).toBe('veh-mum-01');
     expect(res.body.latestTelemetry).toEqual([]);
     expect(res.body.activeAlerts).toEqual([]);
+    expect(res.body.currentTrip).toBeNull();
+    expect(res.body.previousTrips).toEqual([]);
   });
 
   it('returns 404 for non-existent vehicle', async () => {

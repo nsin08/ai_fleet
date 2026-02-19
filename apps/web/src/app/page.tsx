@@ -5,7 +5,17 @@ import { useEffect, useState, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import clsx from 'clsx';
-import type { Vehicle, Alert, FleetMode, ScenarioDefinition, ScenarioRun, VehicleState } from '../lib/types';
+import type {
+  Vehicle,
+  Alert,
+  FleetMode,
+  ScenarioDefinition,
+  ScenarioRun,
+  VehicleState,
+  InventorySnapshot,
+  TripSummary,
+  TripDetail,
+} from '../lib/types';
 import { API, WS_URL, fetcher, apiPost } from '../lib/api';
 
 const FleetMap = dynamic(() => import('../components/fleet-map'), { ssr: false });
@@ -52,18 +62,28 @@ export default function DashboardPage() {
   const { data: statesResp } = useSWR<{ data: VehicleState[] }>(`${API}/api/fleet/states`, fetcher, { refreshInterval: 4000, revalidateOnFocus: false });
   const { data: alertsResp } = useSWR<{ data: Alert[] }>(`${API}/api/alerts?status=OPEN&limit=30`, fetcher, { refreshInterval: 4000, revalidateOnFocus: false });
   const { data: scenariosResp } = useSWR<{ data: ScenarioDefinition[] }>(`${API}/api/scenarios`, fetcher, { revalidateOnFocus: false });
+  const { data: inventory } = useSWR<InventorySnapshot>(`${API}/api/fleet/inventory`, fetcher, SWR_OPT);
+  const { data: recentTripsResp } = useSWR<{ data: TripSummary[] }>(`${API}/api/fleet/trips?limit=15`, fetcher, SWR_OPT);
 
   const vehicles = vehiclesResp?.data ?? [];
   const states = statesResp?.data ?? [];
   const alerts = alertsResp?.data ?? [];
   const scenarios = scenariosResp?.data ?? [];
+  const recentTrips = recentTripsResp?.data ?? [];
   const fleetMode = modeData;
 
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [wsOk, setWsOk] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [activeRun, setActiveRun] = useState<ScenarioRun | null>(null);
   const [runLoading, setRunLoading] = useState(false);
+
+  const { data: selectedTrip } = useSWR<TripDetail>(
+    selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}` : null,
+    fetcher,
+    SWR_OPT,
+  );
 
   useEffect(() => {
     let ws: WebSocket;
@@ -81,16 +101,21 @@ export default function DashboardPage() {
               setLiveEvents((p) => [`ALERT: ${msg.data?.alertType} — ${msg.data?.title ?? ''}`, ...p.slice(0, 49)]);
               void mutate(`${API}/api/alerts?status=OPEN&limit=30`);
               void mutate(`${API}/api/fleet/states`);
+              void mutate(`${API}/api/fleet/inventory`);
             } else if (msg.type === 'vehicleState') {
               void mutate(`${API}/api/fleet/states`);
+              void mutate(`${API}/api/fleet/inventory`);
             } else if (msg.type === 'event') {
+              void mutate(`${API}/api/fleet/trips?limit=15`);
               setLiveEvents((p) => [`EVENT: ${msg.data?.eventType} — ${msg.data?.vehicleRegNo ?? ''}`, ...p.slice(0, 49)]);
             } else if (msg.type === 'telemetry') {
+              void mutate(`${API}/api/fleet/inventory`);
               setLiveEvents((p) => [`${msg.data?.vehicleRegNo ?? msg.vehicleId?.slice(0, 8) ?? '?'} — ${n(msg.data?.speedKph)} km/h`, ...p.slice(0, 49)]);
               void mutate(`${API}/api/fleet/states`);
             } else if (msg.type === 'replayStatus') {
               setActiveRun(msg.data as ScenarioRun);
               void mutate(`${API}/api/fleet/mode`);
+              void mutate(`${API}/api/fleet/trips?limit=15`);
             }
           } catch { /* ignore */ }
         };
@@ -99,6 +124,12 @@ export default function DashboardPage() {
     connect();
     return () => { clearTimeout(retryTimer); ws?.close(); };
   }, []);
+
+  useEffect(() => {
+    if (!selectedTripId && recentTrips.length > 0) {
+      setSelectedTripId(recentTrips[0]!.id);
+    }
+  }, [recentTrips, selectedTripId]);
 
   const startScenario = useCallback(async (scenarioId: string) => {
     setRunLoading(true);
@@ -129,8 +160,16 @@ export default function DashboardPage() {
   const isPaused = activeRun?.status === 'PAUSED';
   const hasActiveRun = isRunning || isPaused;
 
-  const onTripCount = vehicles.filter((v) => ['ON_TRIP', 'on_trip'].includes(v.status)).length;
-  const alertingCount = states.filter((s) => s.activeAlertCount > 0).length;
+  const onTripCount = inventory?.totals.onTrip
+    ?? vehicles.filter((v) => ['ON_TRIP', 'on_trip'].includes(v.status)).length;
+  const alertingCount = inventory?.totals.alerting
+    ?? states.filter((s) => s.activeAlertCount > 0).length;
+  const activeTripCount = inventory?.totals.activeTrips
+    ?? recentTrips.filter((t) => ['planned', 'active', 'paused'].includes(t.status)).length;
+  const completedTripCount = inventory?.totals.completedTrips
+    ?? recentTrips.filter((t) => ['completed', 'cancelled'].includes(t.status)).length;
+  const fmtTs = (ts?: string) => (ts ? new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-');
+  const fmtKm = (km?: number) => (km == null ? '-' : `${Number(km).toFixed(1)} km`);
 
   return (
     <div className="flex flex-col h-full bg-[#0f172a] overflow-hidden">
@@ -154,6 +193,8 @@ export default function DashboardPage() {
         <StatCard label="Total Vehicles" value={vehicles.length} />
         <StatCard label="On Trip" value={onTripCount} valueClass={onTripCount > 0 ? 'text-green-400' : 'text-white'} />
         <StatCard label="Open Alerts" value={alerts.length} valueClass={alerts.length > 0 ? 'text-red-400' : 'text-white'} />
+        <StatCard label="Active Trips" value={activeTripCount} valueClass={activeTripCount > 0 ? 'text-cyan-300' : 'text-white'} />
+        <StatCard label="Completed Trips" value={completedTripCount} valueClass={completedTripCount > 0 ? 'text-blue-300' : 'text-white'} />
         <StatCard label="Alerting" value={alertingCount} valueClass={alertingCount > 0 ? 'text-orange-400' : 'text-white'} sub="vehicles with active alerts" />
       </div>
 
@@ -183,12 +224,104 @@ export default function DashboardPage() {
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Map */}
-        <div className="flex-1 relative min-w-0">
-          <FleetMap
-            states={states}
-            onVehicleClick={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
-          />
+        {/* Map + trip history */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 relative min-h-0">
+            <FleetMap
+              states={states}
+              onVehicleClick={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
+            />
+          </div>
+
+          <div className="h-64 border-t border-slate-800/60 bg-[#0c1322] grid grid-cols-2 min-h-0">
+            <div className="border-r border-slate-800/60 flex flex-col min-h-0">
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                <span>Previous Trips</span>
+                <span className="text-slate-700">{recentTrips.length}</span>
+              </div>
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
+                {recentTrips.length === 0 ? (
+                  <div className="px-4 py-4 text-[11px] text-slate-700">No trip history</div>
+                ) : (
+                  recentTrips.map((trip) => (
+                    <button
+                      key={trip.id}
+                      type="button"
+                      onClick={() => setSelectedTripId(trip.id)}
+                      className={clsx(
+                        'w-full text-left px-4 py-2 hover:bg-slate-800/30 transition-colors',
+                        selectedTripId === trip.id && 'bg-blue-950/30',
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold text-white">{trip.vehicleRegNo}</span>
+                        <span className={clsx(
+                          'px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase',
+                          trip.status === 'completed' ? 'bg-green-900/60 text-green-300' :
+                            trip.status === 'cancelled' ? 'bg-red-900/60 text-red-300' :
+                              'bg-blue-900/60 text-blue-300',
+                        )}>
+                          {trip.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                        {trip.routeName ?? 'Unassigned route'} | {trip.driverName ?? trip.driverId}
+                      </div>
+                      <div className="text-[10px] text-slate-600 mt-0.5">
+                        {fmtTs(trip.startedAt)}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col min-h-0">
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                Trip Details
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 pb-3">
+                {!selectedTrip ? (
+                  <div className="text-[11px] text-slate-700 pt-2">Select a trip to view details</div>
+                ) : (
+                  <div className="space-y-2 text-[11px]">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-slate-900/50 rounded px-2 py-1.5">
+                        <div className="text-slate-600 text-[9px] uppercase">Vehicle</div>
+                        <div className="text-white font-semibold">{selectedTrip.vehicleRegNo}</div>
+                      </div>
+                      <div className="bg-slate-900/50 rounded px-2 py-1.5">
+                        <div className="text-slate-600 text-[9px] uppercase">Driver</div>
+                        <div className="text-white font-semibold truncate">{selectedTrip.driverName ?? selectedTrip.driverId}</div>
+                      </div>
+                      <div className="bg-slate-900/50 rounded px-2 py-1.5">
+                        <div className="text-slate-600 text-[9px] uppercase">Route</div>
+                        <div className="text-white font-semibold truncate">{selectedTrip.routeName ?? '-'}</div>
+                      </div>
+                      <div className="bg-slate-900/50 rounded px-2 py-1.5">
+                        <div className="text-slate-600 text-[9px] uppercase">Distance</div>
+                        <div className="text-white font-semibold">{fmtKm(selectedTrip.actualDistanceKm ?? selectedTrip.plannedDistanceKm)}</div>
+                      </div>
+                    </div>
+                    <div className="text-slate-500">
+                      <span className="text-slate-600">Start:</span> {fmtTs(selectedTrip.startedAt)}
+                    </div>
+                    <div className="text-slate-500">
+                      <span className="text-slate-600">End:</span> {fmtTs(selectedTrip.endedAt)}
+                    </div>
+                    <div className="text-slate-500">
+                      <span className="text-slate-600">Stops:</span> {selectedTrip.stops?.length ?? selectedTrip.stopCount ?? 0}
+                    </div>
+                    {selectedTrip.endReason && (
+                      <div className="text-slate-500">
+                        <span className="text-slate-600">End reason:</span> {selectedTrip.endReason}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right panel */}
@@ -200,14 +333,15 @@ export default function DashboardPage() {
             </div>
             {vehicles.map((v) => {
               const st = states.find((s) => s.vehicleId === v.id);
+              const status = st?.status ?? v.status;
               const isSelected = selectedVehicleId === v.id;
               return (
                 <Link key={v.id} href={`/vehicles/${v.id}`}
                   className={clsx('flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/40 hover:bg-slate-800/30 transition-colors', isSelected && 'bg-blue-950/30 border-blue-800/40')}>
-                  <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', STATUS_DOT[v.status] ?? 'bg-slate-600')} />
+                  <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', STATUS_DOT[status] ?? 'bg-slate-600')} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-semibold text-white truncate">{v.vehicleRegNo}</div>
-                    <div className="text-[10px] text-slate-500 capitalize">{v.status.toLowerCase().replace(/_/g, ' ')}</div>
+                    <div className="text-[10px] text-slate-500 capitalize">{status.toLowerCase().replace(/_/g, ' ')}</div>
                   </div>
                   {(st?.activeAlertCount != null && Number(st.activeAlertCount) > 0) && (
                     <span className="text-[10px] font-bold text-red-400 flex-shrink-0">{st!.activeAlertCount}</span>
@@ -218,6 +352,28 @@ export default function DashboardPage() {
                 </Link>
               );
             })}
+          </div>
+
+          {/* Inventory */}
+          <div className="h-44 flex-shrink-0 border-t border-slate-800/60 flex flex-col">
+            <div className="px-4 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Inventory</div>
+            <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-2">
+              {inventory?.byType?.length ? (
+                inventory.byType.map((row) => (
+                  <div key={row.vehicleType} className="text-[10px]">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="uppercase">{row.vehicleType}</span>
+                      <span className="text-white font-semibold">{row.count}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      on trip {row.onTrip} | idle {row.idle} | parked {row.parked}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-[11px] text-slate-700 pt-1">Inventory summary unavailable</div>
+              )}
+            </div>
           </div>
 
           {/* Live event feed */}

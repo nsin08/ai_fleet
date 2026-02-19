@@ -56,6 +56,8 @@ curl http://localhost:3001/healthz
 docker compose --profile live up -d vehicle-emitter
 ```
 
+This now brings up `db` + `api` automatically (profile-aligned dependencies).
+
 ## 7) Useful operations
 
 ```powershell

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import useSWR from 'swr';
 import Link from 'next/link';
 import clsx from 'clsx';
-import type { Vehicle, TelemetryPoint, Alert, VehicleState } from '../../../lib/types';
+import type { Vehicle, TelemetryPoint, Alert, VehicleState, TripSummary, TripDetail } from '../../../lib/types';
 import { API, WS_URL, fetcher } from '../../../lib/api';
 
 const FleetMap = dynamic(() => import('../../../components/fleet-map'), { ssr: false });
@@ -45,13 +45,29 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     vehicle: Vehicle;
     latestTelemetry: TelemetryPoint[];
     activeAlerts: Alert[];
+    currentTrip: TripSummary | null;
+    previousTrips: TripSummary[];
   }>(`${API}/api/fleet/vehicles/${vehicleId}`, fetcher, { ...SWR_OPT, refreshInterval: 5000 });
+  const { data: liveState } = useSWR<VehicleState>(
+    `${API}/api/fleet/vehicles/${vehicleId}/state`,
+    fetcher,
+    { ...SWR_OPT, refreshInterval: 4000 },
+  );
 
   const vehicle = vehicleResp?.vehicle;
   const telemetry = vehicleResp?.latestTelemetry ?? [];
   const openAlerts = vehicleResp?.activeAlerts ?? [];
+  const currentTrip = vehicleResp?.currentTrip ?? null;
+  const previousTrips = vehicleResp?.previousTrips ?? [];
 
   const [liveTelemetry, setLiveTelemetry] = useState<TelemetryPoint | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  const { data: selectedTrip } = useSWR<TripDetail>(
+    selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}` : null,
+    fetcher,
+    SWR_OPT,
+  );
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -69,12 +85,24 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     return () => { ws?.close(); };
   }, [vehicleId]);
 
+  useEffect(() => {
+    if (selectedTripId) return;
+    if (currentTrip?.id) {
+      setSelectedTripId(currentTrip.id);
+      return;
+    }
+    if (previousTrips.length > 0) {
+      setSelectedTripId(previousTrips[0]!.id);
+    }
+  }, [currentTrip, previousTrips, selectedTripId]);
+
   const latest = liveTelemetry ?? telemetry[0];
+  const effectiveStatus = liveState?.status ?? vehicle?.status ?? 'idle';
 
   const vehicleState: VehicleState | undefined = vehicle && latest ? {
     vehicleId: vehicle.id,
     vehicleRegNo: vehicle.vehicleRegNo,
-    status: vehicle.status,
+    status: effectiveStatus,
     lat: latest.lat,
     lng: latest.lng,
     speedKph: latest.speedKph,
@@ -101,8 +129,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         {vehicle ? (
           <>
             <h1 className="text-sm font-semibold text-white">{vehicle.vehicleRegNo}</h1>
-            <span className={clsx('px-2 py-0.5 rounded text-[10px] font-bold', STATUS_BADGE[vehicle.status] ?? 'bg-slate-700 text-slate-300')}>
-              {vehicle.status}
+            <span className={clsx('px-2 py-0.5 rounded text-[10px] font-bold', STATUS_BADGE[effectiveStatus] ?? 'bg-slate-700 text-slate-300')}>
+              {effectiveStatus}
             </span>
             <span className="text-[11px] text-slate-500">{vehicle.vehicleType}</span>
           </>
@@ -188,7 +216,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             </div>
           </div>
 
-          {/* Right panel — alerts */}
+          {/* Right panel - alerts */}
           <div className="w-72 flex-shrink-0 border-l border-slate-800/60 flex flex-col bg-[#0c1322] overflow-hidden">
             <div className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">
               Open Alerts <span className="ml-1 text-slate-600">({openAlerts.length})</span>
@@ -209,6 +237,69 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 ))
               )}
             </div>
+
+            <div className="h-24 border-t border-slate-800/60 px-4 py-2 flex-shrink-0">
+              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Trip</div>
+              {currentTrip ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTripId(currentTrip.id)}
+                  className={clsx(
+                    'w-full text-left rounded border border-slate-800 px-2 py-1.5 hover:bg-slate-800/30',
+                    selectedTripId === currentTrip.id && 'bg-blue-950/30 border-blue-900/60',
+                  )}
+                >
+                  <div className="text-[10px] text-white font-semibold truncate">{currentTrip.id}</div>
+                  <div className="text-[10px] text-slate-500 truncate">{currentTrip.routeName ?? 'Unassigned route'}</div>
+                </button>
+              ) : (
+                <div className="text-[11px] text-slate-700 pt-1">No active trip</div>
+              )}
+            </div>
+
+            <div className="h-32 border-t border-slate-800/60 flex-shrink-0 flex flex-col">
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                Previous Trips <span className="text-slate-700">({previousTrips.length})</span>
+              </div>
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
+                {previousTrips.length === 0 ? (
+                  <div className="px-4 py-2 text-[11px] text-slate-700">No completed trips</div>
+                ) : (
+                  previousTrips.map((trip) => (
+                    <button
+                      key={trip.id}
+                      type="button"
+                      onClick={() => setSelectedTripId(trip.id)}
+                      className={clsx(
+                        'w-full text-left px-4 py-1.5 hover:bg-slate-800/30 transition-colors',
+                        selectedTripId === trip.id && 'bg-blue-950/30',
+                      )}
+                    >
+                      <div className="text-[10px] text-white font-semibold truncate">{trip.id}</div>
+                      <div className="text-[10px] text-slate-600">{fmtTs(trip.startedAt)}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="h-36 border-t border-slate-800/60 px-4 py-2 flex-shrink-0 overflow-y-auto">
+              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Trip Details</div>
+              {!selectedTrip ? (
+                <div className="text-[11px] text-slate-700">Select a trip to view details</div>
+              ) : (
+                <div className="space-y-1.5 text-[11px]">
+                  <div className="text-slate-400 font-semibold">{selectedTrip.id}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Status:</span> {selectedTrip.status}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Route:</span> {selectedTrip.routeName ?? '-'}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Distance:</span> {fmt(selectedTrip.actualDistanceKm ?? selectedTrip.plannedDistanceKm, 'km', 1)}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Started:</span> {fmtTs(selectedTrip.startedAt)}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Ended:</span> {selectedTrip.endedAt ? fmtTs(selectedTrip.endedAt) : 'In progress'}</div>
+                  <div className="text-slate-500"><span className="text-slate-600">Stops:</span> {selectedTrip.stops?.length ?? selectedTrip.stopCount ?? 0}</div>
+                </div>
+              )}
+            </div>
+
             {/* Vehicle metadata */}
             <div className="border-t border-slate-800/60 px-4 py-3 flex-shrink-0 space-y-1">
               {[
