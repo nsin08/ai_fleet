@@ -27,7 +27,17 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-fleet_dev_pw}
     command: >
-      psql -h db -U fleet -d ai_fleet -f /migrations/0001_init.sql
+      sh -c "
+        set -- /migrations/*.sql;
+        if [ \"$$1\" = \"/migrations/*.sql\" ]; then
+          echo \"No migration files found in /migrations; exiting.\";
+          exit 1;
+        fi;
+        for f in \"$$@\"; do
+          echo \"Applying migration: $$f\";
+          psql -v ON_ERROR_STOP=1 -h db -U fleet -d ai_fleet -f $$f;
+        done
+      "
     volumes:
       - ./db/migrations:/migrations:ro
     profiles: [ops]

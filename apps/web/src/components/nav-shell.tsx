@@ -24,12 +24,66 @@ const NAV = [
     ),
   },
   {
-    href: '/scenarios',
-    label: 'Scenarios',
+    href: '/dispatch',
+    label: 'Dispatch',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10m-12 9h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/drivers',
+    label: 'Drivers',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 14a4 4 0 10-8 0m8 0a4 4 0 01-8 0m8 0v1a2 2 0 002 2h1m-11-3v1a2 2 0 01-2 2H5m7-10a4 4 0 110-8 4 4 0 010 8z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/maintenance',
+    label: 'Maintenance',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.983 5.5l1.517-1.517a2.121 2.121 0 113 3L15 8.5l-3.017-3zM13.5 10L7 16.5V19h2.5L16 12.5M5 21h14" />
+      </svg>
+    ),
+  },
+  {
+    href: '/fuel',
+    label: 'Fuel',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 3h-1a2 2 0 00-2 2v14a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2h-1V8h1a2 2 0 002-2V5a2 2 0 00-2-2zM7 6h4v14H7a2 2 0 01-2-2V8a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/costs',
+    label: 'Costs',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-3.314 0-6 1.343-6 3s2.686 3 6 3 6 1.343 6 3-2.686 3-6 3m0-12c3.314 0 6 1.343 6 3m-6-3V4m0 16v-3" />
+      </svg>
+    ),
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m4 6v-4m4 4V7M5 21h14a1 1 0 001-1V4a1 1 0 00-1-1H5a1 1 0 00-1 1v16a1 1 0 001 1z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin',
+    label: 'Admin',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3l8 4v6c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7l8-4z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.5 12.5l1.5 1.5 3.5-3.5" />
       </svg>
     ),
   },
@@ -45,7 +99,7 @@ export function NavShell({ children }: { children: React.ReactNode }) {
         {/* Brand */}
         <div className="px-4 py-4 border-b border-slate-800/60">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center flex-shrink-0">
               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
@@ -73,14 +127,14 @@ export function NavShell({ children }: { children: React.ReactNode }) {
                 className={clsx(
                   'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150',
                   active
-                    ? 'bg-blue-500/10 text-blue-400 font-medium'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50',
+                    ? 'bg-emerald-500/15 text-emerald-300 font-medium'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50',
                 )}
               >
                 {item.icon}
                 {item.label}
                 {active && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-300" />
                 )}
               </Link>
             );

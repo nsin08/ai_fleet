@@ -35,8 +35,8 @@ function statusIcon(status: string): L.DivIcon {
     className: '',
     html: `<div style="
       width:14px;height:14px;border-radius:50%;
-      background:${colour};border:2px solid #fff;
-      box-shadow:0 1px 4px rgba(0,0,0,.5);"></div>`,
+      background:${colour};border:2px solid #0f172a;
+      box-shadow:0 1px 4px rgba(15,23,42,.35);"></div>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
     popupAnchor: [0, -10],
@@ -77,10 +77,10 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
       zoom={6}
       scrollWheelZoom
       className={className}
-      style={{ background: '#1e293b', width: '100%', height: '100%' }}
+      style={{ background: '#f8fafc', width: '100%', height: '100%' }}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         maxZoom={19}
       />

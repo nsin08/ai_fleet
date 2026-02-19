@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { PgScenarioRepository } from '@ai-fleet/adapters';
 import { getPool } from '@ai-fleet/adapters';
 import { ReplayEngine } from '../services/replay/replay-engine.js';
+import { getActorId, requirePermission } from '../middleware/rbac.js';
+import { writeAuditLog } from '../services/audit-log.service.js';
 
 export const scenariosRouter = Router();
 
@@ -36,7 +38,7 @@ scenariosRouter.get('/:scenarioId', async (req: Request, res: Response, next: Ne
 });
 
 /** POST /api/scenarios/:scenarioId/run — start a replay run */
-scenariosRouter.post('/:scenarioId/run', async (req: Request, res: Response, next: NextFunction) => {
+scenariosRouter.post('/:scenarioId/run', requirePermission('scenarios:control'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = runBodySchema.parse(req.body);
     const repo = new PgScenarioRepository();
@@ -62,6 +64,17 @@ scenariosRouter.post('/:scenarioId/run', async (req: Request, res: Response, nex
     );
 
     ReplayEngine.getInstance()?.start(run);
+    await writeAuditLog({
+      actorId: getActorId(req),
+      action: 'scenario.run',
+      entityType: 'scenario_run',
+      entityId: run.id,
+      payload: {
+        scenarioId: req.params['scenarioId']!,
+        speedFactor: body.speedFactor,
+        seed: body.seed ?? null,
+      },
+    });
     return res.status(201).json(run);
   } catch (err) {
     next(err);
@@ -69,11 +82,18 @@ scenariosRouter.post('/:scenarioId/run', async (req: Request, res: Response, nex
 });
 
 /** POST /api/scenarios/runs/:runId/pause */
-scenariosRouter.post('/runs/:runId/pause', async (req: Request, res: Response, next: NextFunction) => {
+scenariosRouter.post('/runs/:runId/pause', requirePermission('scenarios:control'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const repo = new PgScenarioRepository();
     ReplayEngine.getInstance()?.pause();
     const run = await repo.updateRunState(req.params['runId']!, 'PAUSED');
+    await writeAuditLog({
+      actorId: getActorId(req),
+      action: 'scenario.pause',
+      entityType: 'scenario_run',
+      entityId: req.params['runId']!,
+      payload: {},
+    });
     return res.json(run);
   } catch (err) {
     next(err);
@@ -81,11 +101,18 @@ scenariosRouter.post('/runs/:runId/pause', async (req: Request, res: Response, n
 });
 
 /** POST /api/scenarios/runs/:runId/resume */
-scenariosRouter.post('/runs/:runId/resume', async (req: Request, res: Response, next: NextFunction) => {
+scenariosRouter.post('/runs/:runId/resume', requirePermission('scenarios:control'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const repo = new PgScenarioRepository();
     const run = await repo.updateRunState(req.params['runId']!, 'RUNNING');
     ReplayEngine.getInstance()?.resume(run);
+    await writeAuditLog({
+      actorId: getActorId(req),
+      action: 'scenario.resume',
+      entityType: 'scenario_run',
+      entityId: req.params['runId']!,
+      payload: {},
+    });
     return res.json(run);
   } catch (err) {
     next(err);
@@ -93,7 +120,7 @@ scenariosRouter.post('/runs/:runId/resume', async (req: Request, res: Response, 
 });
 
 /** POST /api/scenarios/runs/:runId/reset */
-scenariosRouter.post('/runs/:runId/reset', async (req: Request, res: Response, next: NextFunction) => {
+scenariosRouter.post('/runs/:runId/reset', requirePermission('scenarios:control'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const repo = new PgScenarioRepository();
     ReplayEngine.getInstance()?.stop();
@@ -101,6 +128,13 @@ scenariosRouter.post('/runs/:runId/reset', async (req: Request, res: Response, n
     await getPool().query(
       `UPDATE fleet.fleet_runtime_state SET current_mode = 'replay', active_scenario_run_id = NULL, updated_at = NOW() WHERE id = 1`,
     );
+    await writeAuditLog({
+      actorId: getActorId(req),
+      action: 'scenario.reset',
+      entityType: 'scenario_run',
+      entityId: req.params['runId']!,
+      payload: {},
+    });
     return res.json(run);
   } catch (err) {
     next(err);

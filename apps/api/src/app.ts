@@ -10,6 +10,12 @@ import { alertsRouter } from './controllers/alerts.controller.js';
 import { scenariosRouter } from './controllers/scenarios.controller.js';
 import { ingestRouter } from './controllers/ingest.controller.js';
 import { aiRouter } from './controllers/ai.controller.js';
+import { dispatchRouter } from './controllers/dispatch.controller.js';
+import { driversRouter } from './controllers/drivers.controller.js';
+import { maintenanceRouter } from './controllers/maintenance.controller.js';
+import { fuelRouter, costsRouter } from './controllers/costs.controller.js';
+import { reportsRouter } from './controllers/reports.controller.js';
+import { adminRouter } from './controllers/admin.controller.js';
 import { WsGateway } from './ws/ws-gateway.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { ReplayEngine } from './services/replay/replay-engine.js';
@@ -30,6 +36,13 @@ export function buildApp(): ReturnType<typeof express> {
   app.use('/api/scenarios', scenariosRouter);
   app.use('/api/ingest', ingestRouter);
   app.use('/api/ai', aiRouter);
+  app.use('/api/dispatch', dispatchRouter);
+  app.use('/api/drivers', driversRouter);
+  app.use('/api/maintenance', maintenanceRouter);
+  app.use('/api/fuel', fuelRouter);
+  app.use('/api/costs', costsRouter);
+  app.use('/api/reports', reportsRouter);
+  app.use('/api/admin', adminRouter);
 
   app.get('/healthz', (_req, res) => {
     res.json({ status: 'ok', ts: new Date().toISOString() });

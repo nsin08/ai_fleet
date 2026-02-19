@@ -170,12 +170,14 @@ fleetRouter.get('/trips', async (req: Request, res: Response, next: NextFunction
         t.status,
         t.started_at AS "startedAt",
         t.ended_at AS "endedAt",
+        t.planned_eta_at AS "plannedEtaAt",
         t.start_depot_id AS "startDepotId",
         sd.name AS "startDepotName",
         t.end_depot_id AS "endDepotId",
         ed.name AS "endDepotName",
         t.planned_distance_km AS "plannedDistanceKm",
         t.actual_distance_km AS "actualDistanceKm",
+        t.delay_reason AS "delayReason",
         t.end_reason AS "endReason",
         (
           SELECT COUNT(*)::int
@@ -225,12 +227,14 @@ fleetRouter.get('/trips/:tripId', async (req: Request, res: Response, next: Next
          t.status,
          t.started_at AS "startedAt",
          t.ended_at AS "endedAt",
+         t.planned_eta_at AS "plannedEtaAt",
          t.start_depot_id AS "startDepotId",
          sd.name AS "startDepotName",
          t.end_depot_id AS "endDepotId",
          ed.name AS "endDepotName",
          t.planned_distance_km AS "plannedDistanceKm",
          t.actual_distance_km AS "actualDistanceKm",
+         t.delay_reason AS "delayReason",
          t.end_reason AS "endReason"
        FROM fleet.trips t
        LEFT JOIN fleet.vehicles v ON v.id = t.vehicle_id
@@ -294,12 +298,14 @@ fleetRouter.get('/vehicles/:vehicleId', async (req: Request, res: Response, next
            t.status,
            t.started_at AS "startedAt",
            t.ended_at AS "endedAt",
+           t.planned_eta_at AS "plannedEtaAt",
            t.start_depot_id AS "startDepotId",
            sd.name AS "startDepotName",
            t.end_depot_id AS "endDepotId",
            ed.name AS "endDepotName",
            t.planned_distance_km AS "plannedDistanceKm",
            t.actual_distance_km AS "actualDistanceKm",
+           t.delay_reason AS "delayReason",
            t.end_reason AS "endReason",
            (
              SELECT COUNT(*)::int
@@ -331,12 +337,14 @@ fleetRouter.get('/vehicles/:vehicleId', async (req: Request, res: Response, next
            t.status,
            t.started_at AS "startedAt",
            t.ended_at AS "endedAt",
+           t.planned_eta_at AS "plannedEtaAt",
            t.start_depot_id AS "startDepotId",
            sd.name AS "startDepotName",
            t.end_depot_id AS "endDepotId",
            ed.name AS "endDepotName",
            t.planned_distance_km AS "plannedDistanceKm",
            t.actual_distance_km AS "actualDistanceKm",
+           t.delay_reason AS "delayReason",
            t.end_reason AS "endReason",
            (
              SELECT COUNT(*)::int
