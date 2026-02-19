@@ -44,6 +44,17 @@ fleetRouter.get('/vehicles', async (req: Request, res: Response, next: NextFunct
   }
 });
 
+/** GET /api/fleet/states — all vehicle latest states (lat/lng/speed for map) */
+fleetRouter.get('/states', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const repo = new PgVehicleRepository();
+    const states = await repo.listLatestStates();
+    res.json({ data: states });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /api/fleet/vehicles/:vehicleId */
 fleetRouter.get('/vehicles/:vehicleId', async (req: Request, res: Response, next: NextFunction) => {
   try {

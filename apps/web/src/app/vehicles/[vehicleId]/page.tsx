@@ -1,298 +1,229 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import useSWR from 'swr';
 import Link from 'next/link';
 import clsx from 'clsx';
-import type { Vehicle, TelemetryPoint, Alert } from '../../../lib/types';
+import type { Vehicle, TelemetryPoint, Alert, VehicleState } from '../../../lib/types';
 import { API, WS_URL, fetcher } from '../../../lib/api';
 
-export default function VehicleDetailPage({
-  params,
-}: {
-  params: { vehicleId: string };
-}) {
+const FleetMap = dynamic(() => import('../../../components/fleet-map'), { ssr: false });
+
+const SWR_OPT = { revalidateOnFocus: false };
+
+const STATUS_BADGE: Record<string, string> = {
+  ON_TRIP: 'bg-green-900/60 text-green-300',
+  IDLE: 'bg-slate-700 text-slate-300',
+  PARKED: 'bg-blue-900/60 text-blue-300',
+  MAINTENANCE: 'bg-orange-900/60 text-orange-300',
+  OFFLINE: 'bg-red-900/60 text-red-300',
+};
+
+const SEVERITY_COLOR: Record<string, string> = {
+  CRITICAL: 'text-red-400',
+  HIGH: 'text-orange-400',
+  MEDIUM: 'text-amber-400',
+  LOW: 'text-slate-400',
+};
+
+function fmt(val: number | undefined, unit: string, decimals = 0) {
+  if (val == null) return '—';
+  return `${val.toFixed(decimals)} ${unit}`;
+}
+
+function fmtTs(ts: string) {
+  try { return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return ts; }
+}
+
+export default function VehicleDetailPage({ params }: { params: { vehicleId: string } }) {
   const { vehicleId } = params;
 
-  /* ── data fetch ── */
   const { data: vehicleResp } = useSWR<{
     vehicle: Vehicle;
     latestTelemetry: TelemetryPoint[];
     activeAlerts: Alert[];
-  }>(`${API}/api/fleet/vehicles/${vehicleId}`, fetcher, {
-    refreshInterval: 5000,
-  });
+  }>(`${API}/api/fleet/vehicles/${vehicleId}`, fetcher, { ...SWR_OPT, refreshInterval: 5000 });
 
   const vehicle = vehicleResp?.vehicle;
   const telemetry = vehicleResp?.latestTelemetry ?? [];
   const openAlerts = vehicleResp?.activeAlerts ?? [];
 
-  /* ── live telemetry from WS ── */
   const [liveTelemetry, setLiveTelemetry] = useState<TelemetryPoint | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data as string);
-        if (msg.type === 'telemetry' && msg.vehicleId === vehicleId) {
-          setLiveTelemetry(msg.data);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    return () => ws.close();
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(WS_URL);
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string);
+          if (msg.type === 'telemetry' && msg.vehicleId === vehicleId) {
+            setLiveTelemetry(msg.data as TelemetryPoint);
+          }
+        } catch { /* ignore */ }
+      };
+    } catch { /* ws unavailable */ }
+    return () => { ws?.close(); };
   }, [vehicleId]);
 
-  /* ── latest point (live or from API) ── */
   const latest = liveTelemetry ?? telemetry[0];
 
-  if (!vehicle) {
-    return (
-      <div className="p-6">
-        <p className="text-slate-500">Loading vehicle…</p>
-      </div>
-    );
-  }
+  const vehicleState: VehicleState | undefined = vehicle && latest ? {
+    vehicleId: vehicle.id,
+    vehicleRegNo: vehicle.vehicleRegNo,
+    status: vehicle.status,
+    lat: latest.lat,
+    lng: latest.lng,
+    speedKph: latest.speedKph,
+    fuelPct: latest.fuelPct,
+    headingDeg: latest.headingDeg,
+    activeAlertCount: openAlerts.length,
+    maintenanceDue: false,
+    updatedAt: latest.ts,
+  } : undefined;
+
+  const mapStates: VehicleState[] = vehicleState ? [vehicleState] : [];
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      {/* Breadcrumb + Header */}
-      <div>
-        <Link href="/" className="text-sm text-blue-400 hover:text-blue-300">
-          ← Back to Overview
+    <div className="flex flex-col h-full bg-[#0f172a]">
+      {/* Header */}
+      <header className="flex items-center gap-4 px-6 py-3 border-b border-slate-800/60 bg-[#0c1322] flex-shrink-0">
+        <Link href="/" className="flex items-center gap-1.5 text-slate-400 hover:text-white text-xs transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Fleet
         </Link>
-        <div className="flex items-center gap-4 mt-2">
-          <h1 className="text-2xl font-bold text-white font-mono">
-            {vehicle.vehicleRegNo}
-          </h1>
-          <span className="text-slate-400">—</span>
-          <span className="text-lg text-slate-300">{vehicle.name}</span>
-          <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300 capitalize">
-            {vehicle.vehicleType}
+        <span className="text-slate-700">/</span>
+        {vehicle ? (
+          <>
+            <h1 className="text-sm font-semibold text-white">{vehicle.vehicleRegNo}</h1>
+            <span className={clsx('px-2 py-0.5 rounded text-[10px] font-bold', STATUS_BADGE[vehicle.status] ?? 'bg-slate-700 text-slate-300')}>
+              {vehicle.status}
+            </span>
+            <span className="text-[11px] text-slate-500">{vehicle.vehicleType}</span>
+          </>
+        ) : (
+          <span className="text-sm text-slate-500">Loading…</span>
+        )}
+        <div className="flex-1" />
+        {openAlerts.length > 0 && (
+          <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-900/50 text-red-300 text-[11px] font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+            {openAlerts.length} Alert{openAlerts.length > 1 ? 's' : ''}
           </span>
-          <VehicleStatusBadge status={vehicle.status} />
-        </div>
-        <p className="text-xs text-slate-500 mt-1">
-          ID: {vehicle.id} · Depot: {vehicle.depotId}
-        </p>
-      </div>
+        )}
+      </header>
 
-      {/* Telemetry Cards */}
-      {latest ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          <TelemetryCard
-            label="Speed"
-            value={`${latest.speedKph?.toFixed(0) ?? '—'}`}
-            unit="kph"
-            warn={latest.speedKph > 80}
-          />
-          <TelemetryCard
-            label="Ignition"
-            value={latest.ignition ? 'ON' : 'OFF'}
-            color={latest.ignition ? 'green' : 'slate'}
-          />
-          <TelemetryCard
-            label="Idling"
-            value={latest.idling ? 'YES' : 'NO'}
-            color={latest.idling ? 'yellow' : 'slate'}
-          />
-          <TelemetryCard
-            label="Fuel"
-            value={`${latest.fuelPct?.toFixed(1) ?? '—'}`}
-            unit="%"
-            warn={latest.fuelPct < 20}
-          />
-          <TelemetryCard
-            label="Eng Temp"
-            value={`${latest.engineTempC?.toFixed(0) ?? '—'}`}
-            unit="°C"
-            warn={(latest.engineTempC ?? 0) > 100}
-          />
-          <TelemetryCard
-            label="Battery"
-            value={`${latest.batteryV?.toFixed(1) ?? '—'}`}
-            unit="V"
-            warn={(latest.batteryV ?? 13) < 11.5}
-          />
-          <TelemetryCard
-            label="Odometer"
-            value={`${latest.odometerKm?.toFixed(0) ?? '—'}`}
-            unit="km"
-          />
-        </div>
+      {!vehicle ? (
+        <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">Loading vehicle…</div>
       ) : (
-        <div className="bg-slate-800 rounded-xl p-6 text-center text-slate-500">
-          No telemetry data available. Start a scenario replay to generate data.
-        </div>
-      )}
-
-      {/* Extra telemetry info */}
-      {latest && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <TelemetryCard
-            label="Heading"
-            value={`${latest.headingDeg?.toFixed(0) ?? '—'}`}
-            unit="°"
-          />
-          <TelemetryCard
-            label="RPM"
-            value={`${latest.rpm?.toFixed(0) ?? '—'}`}
-          />
-          <TelemetryCard
-            label="Position"
-            value={`${latest.lat?.toFixed(4)}, ${latest.lng?.toFixed(4)}`}
-          />
-          <TelemetryCard
-            label="Source"
-            value={latest.sourceMode}
-          />
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Telemetry History */}
-        <section className="bg-slate-800 rounded-xl p-4">
-          <h2 className="font-semibold text-blue-300 mb-3">
-            Recent Telemetry{' '}
-            <span className="text-slate-500 text-sm font-normal">({telemetry.length})</span>
-          </h2>
-          {telemetry.length === 0 ? (
-            <p className="text-slate-500 text-sm">No telemetry records</p>
-          ) : (
-            <div className="overflow-x-auto max-h-72 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-800">
-                  <tr className="text-left text-slate-400 border-b border-slate-700">
-                    <th className="pb-1 pr-2">Time</th>
-                    <th className="pb-1 pr-2">Speed</th>
-                    <th className="pb-1 pr-2">Fuel</th>
-                    <th className="pb-1 pr-2">Eng°C</th>
-                    <th className="pb-1 pr-2">Ign</th>
-                    <th className="pb-1">Idle</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700/50">
-                  {telemetry.map((t, i) => (
-                    <tr key={i} className="text-slate-300">
-                      <td className="py-1 pr-2 font-mono">
-                        {new Date(t.ts).toLocaleTimeString()}
-                      </td>
-                      <td className="py-1 pr-2">{t.speedKph?.toFixed(0)} kph</td>
-                      <td className="py-1 pr-2">{t.fuelPct?.toFixed(1)}%</td>
-                      <td className="py-1 pr-2">{t.engineTempC?.toFixed(0) ?? '—'}°C</td>
-                      <td className="py-1 pr-2">{t.ignition ? '✓' : '✗'}</td>
-                      <td className="py-1">{t.idling ? '⏳' : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* Open Alerts */}
-        <section className="bg-slate-800 rounded-xl p-4">
-          <h2 className="font-semibold text-red-300 mb-3">
-            Open Alerts{' '}
-            <span className="text-slate-500 text-sm font-normal">({openAlerts.length})</span>
-          </h2>
-          {openAlerts.length === 0 ? (
-            <p className="text-slate-500 text-sm">No open alerts for this vehicle</p>
-          ) : (
-            <div className="space-y-3">
-              {openAlerts.map((a) => (
-                <div
-                  key={a.id}
-                  className="bg-slate-700/50 rounded-lg p-3 border border-slate-700"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-red-200">{a.alertType}</span>
-                    <SeverityBadge severity={a.severity} />
-                  </div>
-                  <p className="text-sm text-slate-300">{a.title}</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {new Date(a.createdTs).toLocaleString()}
-                  </p>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left column */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* KPI strip */}
+            <div className="flex gap-px bg-slate-800/40 border-b border-slate-800/60 flex-shrink-0">
+              {[
+                { label: 'Speed', value: fmt(latest?.speedKph, 'km/h', 1) },
+                { label: 'Fuel', value: fmt(latest?.fuelPct, '%', 1) },
+                { label: 'Odometer', value: fmt(vehicleState?.odometerKm, 'km', 0) },
+                { label: 'Heading', value: fmt(latest?.headingDeg, '°', 0) },
+                { label: 'Ignition', value: latest?.ignition ? 'ON' : latest ? 'OFF' : '—' },
+                { label: 'Last Ping', value: latest ? fmtTs(latest.ts) : '—' },
+              ].map((kpi) => (
+                <div key={kpi.label} className="flex-1 px-4 py-3 bg-[#0c1322]">
+                  <div className="text-[10px] font-medium text-slate-600 uppercase tracking-wide">{kpi.label}</div>
+                  <div className="text-sm font-semibold text-white mt-0.5 tabular-nums">{kpi.value}</div>
                 </div>
               ))}
             </div>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
 
-/* ── Sub-components ── */
+            {/* Map */}
+            <div className="flex-1 min-h-0 relative">
+              {mapStates.length > 0 ? (
+                <FleetMap states={mapStates} />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-sm bg-[#0c1322]">
+                  No GPS fix available
+                </div>
+              )}
+            </div>
 
-function TelemetryCard({
-  label,
-  value,
-  unit,
-  color,
-  warn,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  color?: 'green' | 'yellow' | 'slate';
-  warn?: boolean;
-}) {
-  const valueColor = warn
-    ? 'text-red-400'
-    : color === 'green'
-      ? 'text-green-400'
-      : color === 'yellow'
-        ? 'text-yellow-400'
-        : 'text-white';
-  return (
-    <div className="bg-slate-800 rounded-lg p-3">
-      <p className="text-xs text-slate-400 mb-0.5">{label}</p>
-      <p className={clsx('text-lg font-bold', valueColor)}>
-        {value}
-        {unit && <span className="text-xs text-slate-500 ml-1">{unit}</span>}
-      </p>
-    </div>
-  );
-}
+            {/* Telemetry table */}
+            <div className="h-52 flex-shrink-0 border-t border-slate-800/60 overflow-auto bg-[#0c1322]">
+              <div className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Recent Telemetry</div>
+              {telemetry.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-slate-600">No telemetry history</div>
+              ) : (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-[10px] text-slate-600 uppercase tracking-wider">
+                      <th className="px-4 py-1.5 text-left font-semibold">Time</th>
+                      <th className="px-4 py-1.5 text-right font-semibold">Speed</th>
+                      <th className="px-4 py-1.5 text-right font-semibold">Fuel %</th>
+                      <th className="px-4 py-1.5 text-right font-semibold">Lat</th>
+                      <th className="px-4 py-1.5 text-right font-semibold">Lng</th>
+                      <th className="px-4 py-1.5 text-center font-semibold">Eng.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {telemetry.slice(0, 12).map((t, i) => (
+                      <tr key={i} className="hover:bg-slate-800/20">
+                        <td className="px-4 py-1.5 text-slate-400 font-mono">{fmtTs(t.ts)}</td>
+                        <td className="px-4 py-1.5 text-right text-white tabular-nums">{fmt(t.speedKph, 'km/h', 1)}</td>
+                        <td className="px-4 py-1.5 text-right text-white tabular-nums">{fmt(t.fuelPct, '%', 1)}</td>
+                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lat?.toFixed(4) ?? '—'}</td>
+                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lng?.toFixed(4) ?? '—'}</td>
+                        <td className="px-4 py-1.5 text-center">
+                          <span className={clsx('text-[10px] font-bold', t.ignition ? 'text-green-400' : 'text-slate-600')}>{t.ignition ? 'ON' : 'OFF'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
 
-function VehicleStatusBadge({ status }: { status: string }) {
-  const config: Record<string, string> = {
-    on_trip: 'bg-green-800 text-green-200',
-    idle: 'bg-blue-900 text-blue-300',
-    parked: 'bg-slate-700 text-slate-300',
-    maintenance_due: 'bg-orange-900 text-orange-200',
-    alerting: 'bg-red-900 text-red-200',
-  };
-  return (
-    <span
-      className={clsx(
-        'px-2 py-0.5 rounded text-xs font-medium',
-        config[status] ?? 'bg-slate-700 text-slate-400',
+          {/* Right panel — alerts */}
+          <div className="w-72 flex-shrink-0 border-l border-slate-800/60 flex flex-col bg-[#0c1322] overflow-hidden">
+            <div className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">
+              Open Alerts <span className="ml-1 text-slate-600">({openAlerts.length})</span>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+              {openAlerts.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-slate-600 text-center">No open alerts</div>
+              ) : (
+                openAlerts.map((a) => (
+                  <div key={a.id} className="px-4 py-3 hover:bg-slate-800/30">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span className={clsx('text-[10px] font-bold uppercase', SEVERITY_COLOR[a.severity] ?? 'text-slate-400')}>{a.severity}</span>
+                      <span className="text-[10px] text-slate-600 flex-shrink-0">{fmtTs(a.createdTs)}</span>
+                    </div>
+                    <div className="text-xs text-white font-medium">{a.alertType.replace(/_/g, ' ')}</div>
+                    {a.description && <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{a.description}</div>}
+                  </div>
+                ))
+              )}
+            </div>
+            {/* Vehicle metadata */}
+            <div className="border-t border-slate-800/60 px-4 py-3 flex-shrink-0 space-y-1">
+              {[
+                { label: 'Type', value: vehicle.vehicleType },
+                { label: 'Depot', value: vehicle.depotId ?? '—' },
+                { label: 'Driver', value: vehicle.assignedDriverId ?? 'Unassigned' },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between text-[11px]">
+                  <span className="text-slate-600">{row.label}</span>
+                  <span className="text-slate-300 font-medium truncate max-w-[60%] text-right">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
-    >
-      {status.replace(/_/g, ' ')}
-    </span>
-  );
-}
-
-function SeverityBadge({ severity }: { severity: string }) {
-  const s = severity.toUpperCase();
-  const config: Record<string, string> = {
-    HIGH: 'bg-red-900 text-red-200',
-    MEDIUM: 'bg-orange-900 text-orange-200',
-    LOW: 'bg-yellow-900 text-yellow-200',
-  };
-  return (
-    <span
-      className={clsx(
-        'px-1.5 py-0.5 rounded text-xs font-medium',
-        config[s] ?? 'bg-slate-700 text-slate-400',
-      )}
-    >
-      {severity}
-    </span>
+    </div>
   );
 }

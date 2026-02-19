@@ -84,6 +84,29 @@ export interface Alert {
   updatedAt: string;
 }
 
+export interface VehicleState {
+  vehicleId: string;
+  vehicleRegNo: string;
+  driverId?: string;
+  tripId?: string;
+  status: string;
+  lastTelemetryId?: number;
+  lastTs?: string;
+  lat?: number;
+  lng?: number;
+  speedKph?: number;
+  ignition?: boolean;
+  idling?: boolean;
+  fuelPct?: number;
+  engineTempC?: number;
+  batteryV?: number;
+  odometerKm?: number;
+  headingDeg?: number;
+  activeAlertCount: number;
+  maintenanceDue: boolean;
+  updatedAt: string;
+}
+
 export interface FleetMode {
   mode: 'replay' | 'live';
   active_run_id: string | null;

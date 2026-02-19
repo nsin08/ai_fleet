@@ -6,313 +6,221 @@ import clsx from 'clsx';
 import type { Alert } from '../../lib/types';
 import { API, fetcher, apiPost } from '../../lib/api';
 
+const SWR_OPT = { revalidateOnFocus: false };
+
+const SEV: Record<string, string> = {
+  CRITICAL: 'bg-red-950/80 text-red-300 border-red-800/60',
+  HIGH: 'bg-red-900/60 text-red-300 border-red-800/60',
+  MEDIUM: 'bg-orange-900/60 text-orange-300 border-orange-800/60',
+  LOW: 'bg-yellow-900/50 text-yellow-300 border-yellow-800/50',
+};
+const STATUS_STYLE: Record<string, string> = {
+  OPEN: 'bg-red-900/40 text-red-300',
+  ACK: 'bg-amber-900/40 text-amber-300',
+  CLOSED: 'bg-slate-800 text-slate-500',
+};
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-[11px]">
+      <span className="text-slate-600 flex-shrink-0">{label}</span>
+      <span className="text-slate-300 font-medium text-right truncate">{value}</span>
+    </div>
+  );
+}
+
+type StatusFilter = 'ALL' | 'OPEN' | 'ACK' | 'CLOSED';
+type SeverityFilter = '' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
 export default function AlertsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>('OPEN');
-  const [severityFilter, setSeverityFilter] = useState<string>('');
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
-  const [ackLoading, setAckLoading] = useState(false);
-  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('OPEN');
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('');
+  const [selected, setSelected] = useState<Alert | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
 
-  const params = new URLSearchParams();
-  if (statusFilter) params.set('status', statusFilter);
-  if (severityFilter) params.set('severity', severityFilter);
-  params.set('limit', '50');
+  const qs = new URLSearchParams();
+  if (statusFilter !== 'ALL') qs.set('status', statusFilter);
+  if (severityFilter) qs.set('severity', severityFilter);
+  qs.set('limit', '200');
 
-  const alertsUrl = `${API}/api/alerts?${params.toString()}`;
-  const { data: alertsResp, isLoading } = useSWR<{ data: Alert[]; total: number }>(
-    alertsUrl,
+  const { data: resp } = useSWR<{ data: Alert[] }>(
+    `${API}/api/alerts?${qs.toString()}`,
     fetcher,
-    { refreshInterval: 5000 },
+    { ...SWR_OPT, refreshInterval: 5000 },
   );
+  const alerts = resp?.data ?? [];
 
-  const alerts = alertsResp?.data ?? [];
-
-  const handleAck = useCallback(
-    async (alertId: string) => {
-      setAckLoading(true);
-      try {
-        await apiPost(`/api/alerts/${alertId}/ack`, {
-          actorId: 'ops-user-01',
-          note: 'Acknowledged via dashboard',
-        });
-        void mutate(alertsUrl);
-        setSelectedAlert(null);
-      } finally {
-        setAckLoading(false);
-      }
-    },
-    [alertsUrl],
-  );
-
-  const handleClose = useCallback(
-    async (alertId: string) => {
-      await apiPost(`/api/alerts/${alertId}/close`, {
-        resolution: 'Resolved via dashboard',
-      });
-      void mutate(alertsUrl);
-      setSelectedAlert(null);
-    },
-    [alertsUrl],
-  );
-
-  const handleExplain = useCallback(async (alertId: string) => {
-    setAiLoading(true);
-    setAiExplanation(null);
+  const ack = useCallback(async (id: string) => {
+    setActionLoading(true);
     try {
-      const result = await apiPost<{ answer?: string; explanation?: string; error?: string }>(
-        '/api/ai/explain-alert',
-        { alertId },
-      );
-      setAiExplanation(result.answer ?? result.explanation ?? result.error ?? 'No explanation available');
-    } catch {
-      setAiExplanation('AI provider unavailable — is Ollama running?');
-    } finally {
-      setAiLoading(false);
-    }
+      await apiPost(`/api/alerts/${id}/ack`);
+      void mutate(`${API}/api/alerts?${qs.toString()}`);
+      setSelected((prev) => prev?.id === id ? { ...prev, status: 'ACK' } : prev);
+    } finally { setActionLoading(false); }
+  }, [qs]);
+
+  const close = useCallback(async (id: string) => {
+    setActionLoading(true);
+    try {
+      await apiPost(`/api/alerts/${id}/close`);
+      void mutate(`${API}/api/alerts?${qs.toString()}`);
+      setSelected((prev) => prev?.id === id ? { ...prev, status: 'CLOSED' } : prev);
+    } finally { setActionLoading(false); }
+  }, [qs]);
+
+  const explain = useCallback(async (id: string) => {
+    setAiLoading(true);
+    setAiText('');
+    try {
+      const data = await apiPost<{ explanation?: string; error?: string }>(`/api/ai/explain-alert`, { alertId: id });
+      setAiText(data.explanation ?? data.error ?? 'No response');
+    } catch (e) {
+      setAiText(String(e));
+    } finally { setAiLoading(false); }
   }, []);
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-white">Alerts</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Monitor and manage fleet alerts</p>
+    <div className="flex flex-col h-full bg-[#0f172a]">
+      {/* Header */}
+      <header className="flex items-center gap-4 px-6 py-3 border-b border-slate-800/60 bg-[#0c1322] flex-shrink-0">
+        <div className="flex-1">
+          <h1 className="text-sm font-semibold text-white">Alerts</h1>
+          <p className="text-[11px] text-slate-500 mt-0.5">{alerts.length} result{alerts.length !== 1 ? 's' : ''}</p>
+        </div>
+        {/* Status filters */}
+        <div className="flex items-center gap-1">
+          {(['ALL', 'OPEN', 'ACK', 'CLOSED'] as StatusFilter[]).map((s) => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={clsx('px-3 py-1 rounded text-[11px] font-medium transition-colors', statusFilter === s ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white')}>
+              {s}
+            </button>
+          ))}
+        </div>
+        {/* Severity */}
+        <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
+          className="bg-slate-800 border border-slate-700 text-slate-300 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-blue-500">
+          <option value="">All Severity</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="LOW">Low</option>
+        </select>
       </header>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterGroup
-          label="Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: '', label: 'All' },
-            { value: 'OPEN', label: 'Open' },
-            { value: 'ACK', label: 'Acknowledged' },
-            { value: 'CLOSED', label: 'Closed' },
-          ]}
-        />
-        <FilterGroup
-          label="Severity"
-          value={severityFilter}
-          onChange={setSeverityFilter}
-          options={[
-            { value: '', label: 'All' },
-            { value: 'HIGH', label: 'High' },
-            { value: 'MEDIUM', label: 'Medium' },
-            { value: 'LOW', label: 'Low' },
-          ]}
-        />
-        <span className="text-sm text-slate-500 ml-auto">
-          {alerts.length} alert{alerts.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Alert List */}
-        <section className="lg:col-span-2 bg-slate-800 rounded-xl p-4">
-          {isLoading ? (
-            <p className="text-slate-500 text-sm">Loading…</p>
-          ) : alerts.length === 0 ? (
-            <p className="text-slate-500 text-sm">No alerts match the current filters</p>
+      {/* Body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Table */}
+        <div className="flex-1 overflow-auto">
+          {alerts.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-slate-600 text-sm">No alerts</div>
           ) : (
-            <div className="space-y-2">
-              {alerts.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => {
-                    setSelectedAlert(a);
-                    setAiExplanation(null);
-                  }}
-                  className={clsx(
-                    'w-full text-left p-3 rounded-lg transition-colors border',
-                    selectedAlert?.id === a.id
-                      ? 'bg-slate-700 border-blue-500'
-                      : 'bg-slate-800 border-slate-700 hover:bg-slate-700/50',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{a.alertType}</span>
-                        <SeverityBadge severity={a.severity} />
-                        <StatusBadge status={a.status} />
-                      </div>
-                      <p className="text-sm text-slate-300 mt-1 truncate">{a.title}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                        <span className="font-mono">{a.vehicleRegNo}</span>
-                        <span>{new Date(a.createdTs).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 bg-[#0c1322] z-10">
+                <tr className="text-[10px] text-slate-600 uppercase tracking-wider border-b border-slate-800/60">
+                  <th className="px-4 py-2.5 text-left font-semibold">Time</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Vehicle</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Type</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Severity</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Status</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {alerts.map((a) => (
+                  <tr key={a.id}
+                    onClick={() => { setSelected(a); setAiText(''); }}
+                    className={clsx('cursor-pointer hover:bg-slate-800/30 transition-colors', selected?.id === a.id && 'bg-blue-950/20')}>
+                    <td className="px-4 py-2.5 text-slate-500 font-mono whitespace-nowrap">
+                      {new Date(a.createdTs).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-300 whitespace-nowrap">{a.vehicleRegNo}</td>
+                    <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{a.alertType.replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={clsx('px-1.5 py-0.5 rounded text-[10px] font-bold border', SEV[a.severity] ?? 'bg-slate-800 text-slate-400 border-slate-700')}>{a.severity}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={clsx('px-1.5 py-0.5 rounded text-[10px] font-semibold', STATUS_STYLE[a.status] ?? 'bg-slate-800 text-slate-400')}>{a.status}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500 max-w-[280px] truncate">{a.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
-        </section>
+        </div>
 
-        {/* Alert Detail Panel */}
-        <section className="bg-slate-800 rounded-xl p-4">
-          {selectedAlert ? (
-            <div className="space-y-4">
-              <h2 className="font-semibold text-white">Alert Detail</h2>
+        {/* Detail panel */}
+        {selected && (
+          <div className="w-[340px] flex-shrink-0 border-l border-slate-800/60 flex flex-col overflow-y-auto bg-[#0c1322]">
+            {/* Header */}
+            <div className="flex items-start justify-between p-4 border-b border-slate-800/60">
+              <div>
+                <div className="text-sm font-semibold text-white">{selected.alertType.replace(/_/g, ' ')}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5 font-mono">{selected.vehicleRegNo}</div>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-slate-600 hover:text-slate-300 text-lg leading-none mt-0.5">x</button>
+            </div>
 
-              <div className="space-y-2 text-sm">
-                <DetailRow label="Type" value={selectedAlert.alertType} />
-                <DetailRow label="Title" value={selectedAlert.title} />
-                <DetailRow label="Description" value={selectedAlert.description} />
-                <DetailRow label="Vehicle" value={selectedAlert.vehicleRegNo} mono />
-                <DetailRow label="Severity" value={selectedAlert.severity} />
-                <DetailRow label="Status" value={selectedAlert.status} />
-                <DetailRow
-                  label="Created"
-                  value={new Date(selectedAlert.createdTs).toLocaleString()}
-                />
-                {selectedAlert.acknowledgedBy && (
-                  <DetailRow label="Acked by" value={selectedAlert.acknowledgedBy} />
-                )}
-                {selectedAlert.note && (
-                  <DetailRow label="Note" value={selectedAlert.note} />
-                )}
+            <div className="p-4 space-y-4 flex-1">
+              {/* Badges */}
+              <div className="flex gap-2 flex-wrap">
+                <span className={clsx('px-2 py-0.5 rounded text-[10px] font-bold border', SEV[selected.severity] ?? 'bg-slate-800 text-slate-400 border-slate-700')}>{selected.severity}</span>
+                <span className={clsx('px-2 py-0.5 rounded text-[10px] font-semibold', STATUS_STYLE[selected.status] ?? 'bg-slate-800 text-slate-400')}>{selected.status}</span>
+              </div>
+
+              {/* Title + description */}
+              <div>
+                <div className="text-xs font-semibold text-slate-300 mb-1">{selected.title}</div>
+                <div className="text-[11px] text-slate-500 leading-relaxed">{selected.description}</div>
+              </div>
+
+              {/* Timestamps */}
+              <div className="space-y-1">
+                <Row label="Created" value={new Date(selected.createdTs).toLocaleString('en-IN')} />
+                {selected.closedTs && <Row label="Closed" value={new Date(selected.closedTs).toLocaleString('en-IN')} />}
+                {selected.acknowledgedBy && <Row label="Ack'd by" value={selected.acknowledgedBy} />}
               </div>
 
               {/* Actions */}
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-700">
-                {selectedAlert.status === 'OPEN' && (
-                  <button
-                    onClick={() => handleAck(selectedAlert.id)}
-                    disabled={ackLoading}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white rounded-lg text-sm transition-colors"
-                  >
-                    {ackLoading ? 'Acking…' : '✓ Acknowledge'}
+              {selected.status === 'OPEN' && (
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => ack(selected.id)} disabled={actionLoading}
+                    className="flex-1 py-1.5 bg-amber-600/80 hover:bg-amber-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors">
+                    Acknowledge
                   </button>
-                )}
-                {selectedAlert.status !== 'CLOSED' && (
-                  <button
-                    onClick={() => handleClose(selectedAlert.id)}
-                    className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-sm transition-colors"
-                  >
-                    ✕ Close
+                  <button onClick={() => close(selected.id)} disabled={actionLoading}
+                    className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors">
+                    Close
                   </button>
-                )}
-                <button
-                  onClick={() => handleExplain(selectedAlert.id)}
-                  disabled={aiLoading}
-                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 text-white rounded-lg text-sm transition-colors"
-                >
-                  {aiLoading ? 'Analyzing…' : '🤖 AI Explain'}
-                </button>
-              </div>
-
-              {/* AI Explanation */}
-              {aiExplanation && (
-                <div className="bg-purple-900/20 border border-purple-800 rounded-lg p-3 mt-3">
-                  <h3 className="text-xs font-semibold text-purple-300 mb-1">AI Analysis</h3>
-                  <p className="text-sm text-slate-300 whitespace-pre-wrap">
-                    {aiExplanation}
-                  </p>
                 </div>
               )}
+              {selected.status === 'ACK' && (
+                <button onClick={() => close(selected.id)} disabled={actionLoading}
+                  className="w-full py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded text-xs font-medium">
+                  Close Alert
+                </button>
+              )}
+
+              {/* AI Explain */}
+              <div className="pt-1 border-t border-slate-800/60">
+                <button onClick={() => explain(selected.id)} disabled={aiLoading}
+                  className="w-full py-1.5 bg-blue-600/80 hover:bg-blue-600 disabled:opacity-50 text-white rounded text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                  {aiLoading ? (
+                    <><span className="w-3 h-3 rounded-full border border-blue-300 border-t-transparent animate-spin" /> Analyzing</>
+                  ) : 'AI Explain'}
+                </button>
+                {aiText && (
+                  <div className="mt-3 p-3 bg-slate-900/60 rounded text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto">
+                    {aiText}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="text-center py-12 text-slate-500 text-sm">
-              Select an alert to view details
-            </div>
-          )}
-        </section>
+          </div>
+        )}
       </div>
     </div>
-  );
-}
-
-/* ── Sub-components ── */
-
-function FilterGroup({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-slate-500">{label}:</span>
-      <div className="flex rounded-lg overflow-hidden border border-slate-700">
-        {options.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => onChange(opt.value)}
-            className={clsx(
-              'px-3 py-1 text-xs transition-colors',
-              value === opt.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className="text-slate-400 flex-shrink-0">{label}</span>
-      <span className={clsx('text-slate-200 text-right truncate', mono && 'font-mono')}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function SeverityBadge({ severity }: { severity: string }) {
-  const s = severity.toUpperCase();
-  const config: Record<string, string> = {
-    HIGH: 'bg-red-900 text-red-200',
-    MEDIUM: 'bg-orange-900 text-orange-200',
-    LOW: 'bg-yellow-900 text-yellow-200',
-  };
-  return (
-    <span
-      className={clsx(
-        'px-1.5 py-0.5 rounded text-xs font-medium',
-        config[s] ?? 'bg-slate-700 text-slate-400',
-      )}
-    >
-      {severity}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, string> = {
-    OPEN: 'bg-red-900/50 text-red-300',
-    ACK: 'bg-yellow-900/50 text-yellow-300',
-    CLOSED: 'bg-slate-700 text-slate-400',
-  };
-  return (
-    <span
-      className={clsx(
-        'px-1.5 py-0.5 rounded text-xs font-medium',
-        config[status] ?? 'bg-slate-700 text-slate-400',
-      )}
-    >
-      {status}
-    </span>
   );
 }

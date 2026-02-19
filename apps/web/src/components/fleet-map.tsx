@@ -1,0 +1,109 @@
+'use client';
+
+import { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import type { VehicleState } from '../lib/types';
+
+/* ── Fix Leaflet default icon ─────────────────────────────────────────────── */
+/* Leaflet + bundlers lose track of the default marker images */
+const iconBase = 'https://unpkg.com/leaflet@1.9.4/dist/images/';
+const DefaultIcon = L.icon({
+  iconUrl: `${iconBase}marker-icon.png`,
+  iconRetinaUrl: `${iconBase}marker-icon-2x.png`,
+  shadowUrl: `${iconBase}marker-shadow.png`,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+/* ── Status → circle colour ───────────────────────────────────────────────── */
+const STATUS_COLOUR: Record<string, string> = {
+  on_trip: '#22c55e',
+  alerting: '#ef4444',
+  idle: '#60a5fa',
+  parked: '#94a3b8',
+  off_route: '#f59e0b',
+  maintenance_due: '#f97316',
+};
+
+function statusIcon(status: string): L.DivIcon {
+  const colour = STATUS_COLOUR[status] ?? '#94a3b8';
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:14px;height:14px;border-radius:50%;
+      background:${colour};border:2px solid #fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.5);"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -10],
+  });
+}
+
+/* ── Auto-fit bounds whenever states change ───────────────────────────────── */
+function AutoFit({ states }: { states: VehicleState[] }) {
+  const map = useMap();
+  useEffect(() => {
+    const pts = states.filter((s) => s.lat != null && s.lng != null);
+    if (pts.length === 0) return;
+    const bounds = L.latLngBounds(pts.map((s) => [s.lat!, s.lng!]));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+  }, [map, states]);
+  return null;
+}
+
+/* ── Main component ───────────────────────────────────────────────────────── */
+interface Props {
+  states: VehicleState[];
+  className?: string;
+  onVehicleClick?: (vehicleId: string) => void;
+}
+
+const INDIA_CENTER: [number, number] = [19.076, 72.877]; // Mumbai default
+
+export default function FleetMap({ states, className = '', onVehicleClick }: Props) {
+  const visible = states.filter((s) => s.lat != null && s.lng != null);
+
+  return (
+    <MapContainer
+      center={INDIA_CENTER}
+      zoom={6}
+      scrollWheelZoom
+      className={className}
+      style={{ background: '#1e293b' }}
+    >
+      <TileLayer
+        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+        maxZoom={19}
+      />
+      {visible.map((s) => (
+        <Marker
+          key={s.vehicleId}
+          position={[s.lat!, s.lng!]}
+          icon={statusIcon(s.status)}
+          eventHandlers={{
+            click: () => onVehicleClick?.(s.vehicleId),
+          }}
+        >
+          <Popup>
+            <div className="text-xs font-mono leading-5">
+              <strong className="block text-sm">{s.vehicleRegNo}</strong>
+              <span className="capitalize">{s.status.replace(/_/g, ' ')}</span>
+              <br />
+              Speed: <strong>{s.speedKph?.toFixed(0) ?? '—'} km/h</strong>
+              <br />
+              Fuel: <strong>{s.fuelPct?.toFixed(0) ?? '—'}%</strong>
+              <br />
+              Alerts: <strong>{s.activeAlertCount}</strong>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+      {visible.length > 0 && <AutoFit states={visible} />}
+    </MapContainer>
+  );
+}
