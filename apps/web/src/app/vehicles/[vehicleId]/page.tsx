@@ -38,6 +38,17 @@ function fmtTs(ts: string) {
   catch { return ts; }
 }
 
+function inferStatusFromTelemetry(latest: TelemetryPoint | undefined, fallbackStatus: string | undefined): string {
+  if (!latest) return fallbackStatus ?? 'idle';
+  const tsEpoch = Date.parse(latest.ts);
+  const isFresh = Number.isFinite(tsEpoch) && (Date.now() - tsEpoch) <= 10 * 60 * 1000;
+  if (!isFresh) return fallbackStatus ?? 'idle';
+  if (latest.speedKph > 3) return 'on_trip';
+  if (!latest.ignition && latest.speedKph <= 1) return 'parked';
+  if (latest.idling || latest.ignition) return 'idle';
+  return fallbackStatus ?? 'idle';
+}
+
 export default function VehicleDetailPage({ params }: { params: { vehicleId: string } }) {
   const { vehicleId } = params;
 
@@ -97,7 +108,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   }, [currentTrip, previousTrips, selectedTripId]);
 
   const latest = liveTelemetry ?? telemetry[0];
-  const effectiveStatus = liveState?.status ?? vehicle?.status ?? 'idle';
+  const effectiveStatus = liveState?.status ?? inferStatusFromTelemetry(latest, vehicle?.status);
+  const effectiveSpeed = (effectiveStatus === 'parked' || effectiveStatus === 'PARKED') ? 0 : latest?.speedKph;
 
   const vehicleState: VehicleState | undefined = vehicle && latest ? {
     vehicleId: vehicle.id,
@@ -105,9 +117,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     status: effectiveStatus,
     lat: latest.lat,
     lng: latest.lng,
-    speedKph: latest.speedKph,
+    speedKph: effectiveSpeed,
     fuelPct: latest.fuelPct,
     headingDeg: latest.headingDeg,
+    odometerKm: latest.odometerKm,
     activeAlertCount: openAlerts.length,
     maintenanceDue: false,
     updatedAt: latest.ts,
@@ -155,7 +168,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             {/* KPI strip */}
             <div className="flex gap-px bg-slate-800/40 border-b border-slate-800/60 flex-shrink-0">
               {[
-                { label: 'Speed', value: fmt(latest?.speedKph, 'km/h', 1) },
+                { label: 'Speed', value: fmt(effectiveSpeed, 'km/h', 1) },
                 { label: 'Fuel', value: fmt(latest?.fuelPct, '%', 1) },
                 { label: 'Odometer', value: fmt(vehicleState?.odometerKm, 'km', 0) },
                 { label: 'Heading', value: fmt(latest?.headingDeg, '°', 0) },

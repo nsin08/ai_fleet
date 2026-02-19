@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { NavShell } from '../components/nav-shell';
 import { ErrorBoundary } from '../components/error-boundary';
+import { CopilotDrawer } from '../components/copilot-drawer';
 
 export const metadata: Metadata = {
   title: 'FleetEdge — Operations Console',
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="h-full bg-[#0f172a] text-white antialiased">
         <ErrorBoundary>
           <NavShell>{children}</NavShell>
+          <CopilotDrawer />
         </ErrorBoundary>
       </body>
     </html>
