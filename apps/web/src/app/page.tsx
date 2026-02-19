@@ -1,22 +1,19 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import clsx from 'clsx';
 import type {
   Vehicle,
   Alert,
-  FleetMode,
-  ScenarioDefinition,
-  ScenarioRun,
   VehicleState,
   InventorySnapshot,
   TripSummary,
   TripDetail,
 } from '../lib/types';
-import { API, WS_URL, fetcher, apiPost } from '../lib/api';
+import { API, WS_URL, fetcher } from '../lib/api';
 
 const FleetMap = dynamic(() => import('../components/fleet-map'), { ssr: false });
 
@@ -57,27 +54,21 @@ function StatCard({ label, value, sub, valueClass = 'text-white' }: {
 }
 
 export default function DashboardPage() {
-  const { data: modeData } = useSWR<FleetMode>(`${API}/api/fleet/mode`, fetcher, SWR_OPT);
   const { data: vehiclesResp } = useSWR<{ data: Vehicle[] }>(`${API}/api/fleet/vehicles?limit=100`, fetcher, SWR_OPT);
   const { data: statesResp } = useSWR<{ data: VehicleState[] }>(`${API}/api/fleet/states`, fetcher, { refreshInterval: 4000, revalidateOnFocus: false });
   const { data: alertsResp } = useSWR<{ data: Alert[] }>(`${API}/api/alerts?status=OPEN&limit=30`, fetcher, { refreshInterval: 4000, revalidateOnFocus: false });
-  const { data: scenariosResp } = useSWR<{ data: ScenarioDefinition[] }>(`${API}/api/scenarios`, fetcher, { revalidateOnFocus: false });
   const { data: inventory } = useSWR<InventorySnapshot>(`${API}/api/fleet/inventory`, fetcher, SWR_OPT);
   const { data: recentTripsResp } = useSWR<{ data: TripSummary[] }>(`${API}/api/fleet/trips?limit=15`, fetcher, SWR_OPT);
 
   const vehicles = vehiclesResp?.data ?? [];
   const states = statesResp?.data ?? [];
   const alerts = alertsResp?.data ?? [];
-  const scenarios = scenariosResp?.data ?? [];
   const recentTrips = recentTripsResp?.data ?? [];
-  const fleetMode = modeData;
 
   const [liveEvents, setLiveEvents] = useState<string[]>([]);
   const [wsOk, setWsOk] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [activeRun, setActiveRun] = useState<ScenarioRun | null>(null);
-  const [runLoading, setRunLoading] = useState(false);
 
   const { data: selectedTrip } = useSWR<TripDetail>(
     selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}` : null,
@@ -112,10 +103,6 @@ export default function DashboardPage() {
               void mutate(`${API}/api/fleet/inventory`);
               setLiveEvents((p) => [`${msg.data?.vehicleRegNo ?? msg.vehicleId?.slice(0, 8) ?? '?'} — ${n(msg.data?.speedKph)} km/h`, ...p.slice(0, 49)]);
               void mutate(`${API}/api/fleet/states`);
-            } else if (msg.type === 'replayStatus') {
-              setActiveRun(msg.data as ScenarioRun);
-              void mutate(`${API}/api/fleet/mode`);
-              void mutate(`${API}/api/fleet/trips?limit=15`);
             }
           } catch { /* ignore */ }
         };
@@ -130,35 +117,6 @@ export default function DashboardPage() {
       setSelectedTripId(recentTrips[0]!.id);
     }
   }, [recentTrips, selectedTripId]);
-
-  const startScenario = useCallback(async (scenarioId: string) => {
-    setRunLoading(true);
-    try {
-      const run = await apiPost<ScenarioRun>(`/api/scenarios/${scenarioId}/run`, { speedFactor: 2 });
-      setActiveRun(run);
-      void mutate(`${API}/api/fleet/mode`);
-    } finally { setRunLoading(false); }
-  }, []);
-
-  const pauseRun = useCallback(async () => {
-    if (!activeRun) return;
-    setActiveRun(await apiPost<ScenarioRun>(`/api/scenarios/runs/${activeRun.id}/pause`));
-  }, [activeRun]);
-
-  const resumeRun = useCallback(async () => {
-    if (!activeRun) return;
-    setActiveRun(await apiPost<ScenarioRun>(`/api/scenarios/runs/${activeRun.id}/resume`));
-  }, [activeRun]);
-
-  const resetRun = useCallback(async () => {
-    if (!activeRun) return;
-    setActiveRun(await apiPost<ScenarioRun>(`/api/scenarios/runs/${activeRun.id}/reset`));
-    void mutate(`${API}/api/fleet/mode`);
-  }, [activeRun]);
-
-  const isRunning = activeRun?.status === 'RUNNING';
-  const isPaused = activeRun?.status === 'PAUSED';
-  const hasActiveRun = isRunning || isPaused;
 
   const onTripCount = inventory?.totals.onTrip
     ?? vehicles.filter((v) => ['ON_TRIP', 'on_trip'].includes(v.status)).length;
@@ -183,9 +141,6 @@ export default function DashboardPage() {
           <span className={clsx('w-1.5 h-1.5 rounded-full', wsOk ? 'bg-green-400 animate-pulse' : 'bg-slate-600')} />
           {wsOk ? 'Live' : 'Connecting'}
         </span>
-        <span className={clsx('px-2.5 py-0.5 rounded-full text-[11px] font-semibold', fleetMode?.mode === 'replay' ? 'bg-amber-900/60 text-amber-300' : fleetMode?.mode === 'live' ? 'bg-green-900/60 text-green-300' : 'bg-slate-800 text-slate-500')}>
-          {fleetMode?.mode?.toUpperCase() ?? 'MODE'}
-        </span>
       </div>
 
       {/* KPI strip */}
@@ -196,30 +151,6 @@ export default function DashboardPage() {
         <StatCard label="Active Trips" value={activeTripCount} valueClass={activeTripCount > 0 ? 'text-cyan-300' : 'text-white'} />
         <StatCard label="Completed Trips" value={completedTripCount} valueClass={completedTripCount > 0 ? 'text-blue-300' : 'text-white'} />
         <StatCard label="Alerting" value={alertingCount} valueClass={alertingCount > 0 ? 'text-orange-400' : 'text-white'} sub="vehicles with active alerts" />
-      </div>
-
-      {/* Scenario controls bar */}
-      <div className="flex items-center gap-3 px-6 py-2 border-b border-slate-800/60 bg-[#0c1322]/60 flex-shrink-0 flex-wrap">
-        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Replay</span>
-        {!hasActiveRun ? (
-          scenarios.map((s) => (
-            <button key={s.id} onClick={() => startScenario(s.id)} disabled={runLoading}
-              className="px-3 py-1 bg-blue-600/80 hover:bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-[11px] font-medium transition-colors">
-              {runLoading ? 'Starting…' : s.name}
-            </button>
-          ))
-        ) : (
-          <>
-            <span className={clsx('flex items-center gap-1.5 text-[11px] font-semibold', isRunning ? 'text-green-400' : 'text-amber-400')}>
-              <span className={clsx('w-1.5 h-1.5 rounded-full', isRunning ? 'bg-green-400 animate-pulse' : 'bg-amber-400')} />
-              {activeRun?.status}
-            </span>
-            <span className="text-[11px] text-slate-600 font-mono">{activeRun?.id.slice(0, 8)}</span>
-            {isRunning && <button onClick={pauseRun} className="px-2.5 py-0.5 bg-amber-700/70 hover:bg-amber-600 text-white rounded text-[11px] font-medium">Pause</button>}
-            {isPaused && <button onClick={resumeRun} className="px-2.5 py-0.5 bg-green-700/70 hover:bg-green-600 text-white rounded text-[11px] font-medium">Resume</button>}
-            <button onClick={resetRun} className="px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-[11px] font-medium">Reset</button>
-          </>
-        )}
       </div>
 
       {/* Main content */}

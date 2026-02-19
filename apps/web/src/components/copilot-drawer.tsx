@@ -211,14 +211,14 @@ export function CopilotDrawer() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 text-[12px] font-semibold shadow-lg"
+          className="fixed bottom-5 right-5 z-[2001] rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-[12px] font-semibold shadow-lg"
         >
           Copilot
         </button>
       )}
 
       {open && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-[2000]">
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -226,8 +226,8 @@ export function CopilotDrawer() {
             aria-label="Close copilot"
           />
 
-          <aside className="absolute right-0 top-0 h-full w-full max-w-[430px] bg-[#0b1220] border-l border-slate-800/70 shadow-2xl flex flex-col">
-            <header className="px-4 py-3 border-b border-slate-800/70 bg-[#0c1322]">
+          <aside className="absolute right-0 top-0 h-full w-full max-w-[430px] bg-[#1f1a17] border-l border-slate-800/70 shadow-2xl flex flex-col">
+            <header className="px-4 py-3 border-b border-slate-800/70 bg-[#292524]">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-white">Fleet Copilot</div>
@@ -247,7 +247,7 @@ export function CopilotDrawer() {
                   type="button"
                   onClick={runDailySummary}
                   disabled={sending}
-                  className="px-2 py-1 rounded bg-cyan-700/80 hover:bg-cyan-700 disabled:bg-slate-700 text-[11px] text-white"
+                  className="px-2 py-1 rounded bg-emerald-700/80 hover:bg-emerald-700 disabled:bg-slate-700 text-[11px] text-white"
                 >
                   Daily Summary
                 </button>
@@ -257,7 +257,7 @@ export function CopilotDrawer() {
                     type="button"
                     onClick={() => void sendMessage(prompt)}
                     disabled={sending}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 text-[11px] text-slate-300"
+                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 text-[11px] text-slate-200"
                   >
                     {prompt}
                   </button>
@@ -278,8 +278,8 @@ export function CopilotDrawer() {
                   className={clsx(
                     'rounded border px-3 py-2 text-[12px] leading-relaxed',
                     message.role === 'user'
-                      ? 'border-cyan-900/70 bg-cyan-950/30 text-cyan-100'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-200',
+                      ? 'border-emerald-900/70 bg-emerald-950/30 text-emerald-100'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-100',
                   )}
                 >
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
@@ -315,7 +315,7 @@ export function CopilotDrawer() {
               )}
             </div>
 
-            <footer className="p-3 border-t border-slate-800/70 bg-[#0c1322]">
+            <footer className="p-3 border-t border-slate-800/70 bg-[#292524]">
               <div className="flex items-end gap-2">
                 <textarea
                   value={input}
@@ -334,7 +334,7 @@ export function CopilotDrawer() {
                   type="button"
                   onClick={() => void sendMessage(input)}
                   disabled={sending || !input.trim()}
-                  className="h-10 px-3 rounded bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white text-[12px] font-semibold"
+                  className="h-10 px-3 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white text-[12px] font-semibold"
                 >
                   Send
                 </button>

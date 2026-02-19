@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full bg-[#0f172a] text-white antialiased">
+      <body className="h-full bg-[#1c1917] text-slate-100 antialiased">
         <ErrorBoundary>
           <NavShell>{children}</NavShell>
           <CopilotDrawer />
