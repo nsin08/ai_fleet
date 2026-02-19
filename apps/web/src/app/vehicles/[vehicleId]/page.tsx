@@ -13,11 +13,11 @@ const FleetMap = dynamic(() => import('../../../components/fleet-map'), { ssr: f
 const SWR_OPT = { revalidateOnFocus: false };
 
 const STATUS_BADGE: Record<string, string> = {
-  ON_TRIP: 'bg-green-900/60 text-green-300',
-  IDLE: 'bg-slate-700 text-slate-300',
-  PARKED: 'bg-blue-900/60 text-blue-300',
-  MAINTENANCE: 'bg-orange-900/60 text-orange-300',
-  OFFLINE: 'bg-red-900/60 text-red-300',
+  ON_TRIP: 'bg-green-900/60 text-green-300', on_trip: 'bg-green-900/60 text-green-300',
+  IDLE: 'bg-slate-700 text-slate-300', idle: 'bg-slate-700 text-slate-300',
+  PARKED: 'bg-blue-900/60 text-blue-300', parked: 'bg-blue-900/60 text-blue-300',
+  MAINTENANCE: 'bg-orange-900/60 text-orange-300', maintenance_due: 'bg-orange-900/60 text-orange-300',
+  OFFLINE: 'bg-red-900/60 text-red-300', alerting: 'bg-red-900/60 text-red-300',
 };
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -27,9 +27,10 @@ const SEVERITY_COLOR: Record<string, string> = {
   LOW: 'text-slate-400',
 };
 
-function fmt(val: number | undefined, unit: string, decimals = 0) {
+function fmt(val: unknown, unit: string, decimals = 0) {
   if (val == null) return '—';
-  return `${val.toFixed(decimals)} ${unit}`;
+  const num = Number(val);
+  return isNaN(num) ? '—' : `${num.toFixed(decimals)} ${unit}`;
 }
 
 function fmtTs(ts: string) {
@@ -174,8 +175,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                         <td className="px-4 py-1.5 text-slate-400 font-mono">{fmtTs(t.ts)}</td>
                         <td className="px-4 py-1.5 text-right text-white tabular-nums">{fmt(t.speedKph, 'km/h', 1)}</td>
                         <td className="px-4 py-1.5 text-right text-white tabular-nums">{fmt(t.fuelPct, '%', 1)}</td>
-                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lat?.toFixed(4) ?? '—'}</td>
-                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lng?.toFixed(4) ?? '—'}</td>
+                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lat != null ? Number(t.lat).toFixed(4) : '—'}</td>
+                        <td className="px-4 py-1.5 text-right text-slate-400 font-mono">{t.lng != null ? Number(t.lng).toFixed(4) : '—'}</td>
                         <td className="px-4 py-1.5 text-center">
                           <span className={clsx('text-[10px] font-bold', t.ignition ? 'text-green-400' : 'text-slate-600')}>{t.ignition ? 'ON' : 'OFF'}</span>
                         </td>

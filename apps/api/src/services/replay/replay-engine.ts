@@ -5,7 +5,7 @@ import {
   DeterministicClock,
   SeededRng,
 } from '@ai-fleet/adapters';
-import type { ScenarioRun, TelemetryPoint } from '@ai-fleet/domain';
+import type { ScenarioRun, TelemetryPoint, VehicleLatestState } from '@ai-fleet/domain';
 import { WsGateway } from '../../ws/ws-gateway.js';
 import { RuleEngine } from '../rules/rule-engine.js';
 
@@ -109,6 +109,35 @@ export class ReplayEngine {
     });
 
     const savedPoints = await telemetryRepo.appendMany(points);
+
+    // ── Update vehicle_latest_state so map/dashboard have real-time position ──
+    for (const pt of savedPoints) {
+      const existing = await vehicleRepo.getLatestState(pt.vehicleId);
+      const state: VehicleLatestState = {
+        vehicleId: pt.vehicleId,
+        vehicleRegNo: pt.vehicleRegNo,
+        driverId: existing?.driverId,
+        tripId: pt.tripId,
+        status: (pt.speedKph > 3 ? 'on_trip' : 'idle') as VehicleLatestState['status'],
+        lastTelemetryId: pt.id,
+        lastTs: pt.ts instanceof Date ? pt.ts : new Date(pt.ts as unknown as string),
+        lat: pt.lat,
+        lng: pt.lng,
+        speedKph: pt.speedKph,
+        ignition: pt.ignition,
+        idling: pt.idling,
+        fuelPct: pt.fuelPct,
+        engineTempC: pt.engineTempC,
+        batteryV: pt.batteryV,
+        odometerKm: pt.odometerKm,
+        headingDeg: pt.headingDeg,
+        activeAlertCount: existing?.activeAlertCount ?? 0,
+        maintenanceDue: existing?.maintenanceDue ?? false,
+        updatedAt: new Date(),
+      };
+      await vehicleRepo.upsertLatestState(state);
+      if (gateway) await gateway.publishVehicleState(state);
+    }
 
     if (gateway) {
       for (const point of savedPoints) {

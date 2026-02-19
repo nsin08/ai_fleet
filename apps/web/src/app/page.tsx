@@ -12,6 +12,13 @@ const FleetMap = dynamic(() => import('../components/fleet-map'), { ssr: false }
 
 const SWR_OPT = { refreshInterval: 5000, revalidateOnFocus: false };
 
+/** Safely format a number that may come as string from the DB */
+function n(v: unknown, decimals = 0): string {
+  if (v == null) return '—';
+  const num = Number(v);
+  return isNaN(num) ? '—' : num.toFixed(decimals);
+}
+
 const STATUS_DOT: Record<string, string> = {
   ON_TRIP: 'bg-green-400', on_trip: 'bg-green-400',
   ALERTING: 'bg-red-400 animate-pulse', alerting: 'bg-red-400 animate-pulse',
@@ -74,10 +81,12 @@ export default function DashboardPage() {
               setLiveEvents((p) => [`ALERT: ${msg.data?.alertType} — ${msg.data?.title ?? ''}`, ...p.slice(0, 49)]);
               void mutate(`${API}/api/alerts?status=OPEN&limit=30`);
               void mutate(`${API}/api/fleet/states`);
+            } else if (msg.type === 'vehicleState') {
+              void mutate(`${API}/api/fleet/states`);
             } else if (msg.type === 'event') {
               setLiveEvents((p) => [`EVENT: ${msg.data?.eventType} — ${msg.data?.vehicleRegNo ?? ''}`, ...p.slice(0, 49)]);
             } else if (msg.type === 'telemetry') {
-              setLiveEvents((p) => [`${msg.data?.vehicleRegNo ?? msg.vehicleId?.slice(0, 8) ?? '?'} — ${msg.data?.speedKph?.toFixed(0) ?? '?'} km/h`, ...p.slice(0, 49)]);
+              setLiveEvents((p) => [`${msg.data?.vehicleRegNo ?? msg.vehicleId?.slice(0, 8) ?? '?'} — ${n(msg.data?.speedKph)} km/h`, ...p.slice(0, 49)]);
               void mutate(`${API}/api/fleet/states`);
             } else if (msg.type === 'replayStatus') {
               setActiveRun(msg.data as ScenarioRun);
@@ -200,11 +209,11 @@ export default function DashboardPage() {
                     <div className="text-[11px] font-semibold text-white truncate">{v.vehicleRegNo}</div>
                     <div className="text-[10px] text-slate-500 capitalize">{v.status.toLowerCase().replace(/_/g, ' ')}</div>
                   </div>
-                  {(st?.activeAlertCount ?? 0) > 0 && (
+                  {(st?.activeAlertCount != null && Number(st.activeAlertCount) > 0) && (
                     <span className="text-[10px] font-bold text-red-400 flex-shrink-0">{st!.activeAlertCount}</span>
                   )}
-                  {st?.speedKph != null && st.speedKph > 0 && (
-                    <span className="text-[10px] text-slate-600 flex-shrink-0 tabular-nums">{st.speedKph.toFixed(0)}</span>
+                  {st?.speedKph != null && Number(st.speedKph) > 0 && (
+                    <span className="text-[10px] text-slate-600 flex-shrink-0 tabular-nums">{n(st.speedKph)}</span>
                   )}
                 </Link>
               );

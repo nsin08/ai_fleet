@@ -21,12 +21,12 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 /* ── Status → circle colour ───────────────────────────────────────────────── */
 const STATUS_COLOUR: Record<string, string> = {
-  on_trip: '#22c55e',
-  alerting: '#ef4444',
-  idle: '#60a5fa',
-  parked: '#94a3b8',
-  off_route: '#f59e0b',
-  maintenance_due: '#f97316',
+  on_trip: '#22c55e', ON_TRIP: '#22c55e',
+  alerting: '#ef4444', ALERTING: '#ef4444',
+  idle: '#60a5fa', IDLE: '#60a5fa',
+  parked: '#94a3b8', PARKED: '#94a3b8',
+  off_route: '#f59e0b', OFF_ROUTE: '#f59e0b',
+  maintenance_due: '#f97316', MAINTENANCE: '#f97316',
 };
 
 function statusIcon(status: string): L.DivIcon {
@@ -49,7 +49,7 @@ function AutoFit({ states }: { states: VehicleState[] }) {
   useEffect(() => {
     const pts = states.filter((s) => s.lat != null && s.lng != null);
     if (pts.length === 0) return;
-    const bounds = L.latLngBounds(pts.map((s) => [s.lat!, s.lng!]));
+    const bounds = L.latLngBounds(pts.map((s) => [Number(s.lat!), Number(s.lng!)]));
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
   }, [map, states]);
   return null;
@@ -73,7 +73,7 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
       zoom={6}
       scrollWheelZoom
       className={className}
-      style={{ background: '#1e293b' }}
+      style={{ background: '#1e293b', width: '100%', height: '100%' }}
     >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -83,7 +83,7 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
       {visible.map((s) => (
         <Marker
           key={s.vehicleId}
-          position={[s.lat!, s.lng!]}
+          position={[Number(s.lat!), Number(s.lng!)]}
           icon={statusIcon(s.status)}
           eventHandlers={{
             click: () => onVehicleClick?.(s.vehicleId),
@@ -94,9 +94,9 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
               <strong className="block text-sm">{s.vehicleRegNo}</strong>
               <span className="capitalize">{s.status.replace(/_/g, ' ')}</span>
               <br />
-              Speed: <strong>{s.speedKph?.toFixed(0) ?? '—'} km/h</strong>
+              Speed: <strong>{s.speedKph != null ? Number(s.speedKph).toFixed(0) : '—'} km/h</strong>
               <br />
-              Fuel: <strong>{s.fuelPct?.toFixed(0) ?? '—'}%</strong>
+              Fuel: <strong>{s.fuelPct != null ? Number(s.fuelPct).toFixed(0) : '—'}%</strong>
               <br />
               Alerts: <strong>{s.activeAlertCount}</strong>
             </div>

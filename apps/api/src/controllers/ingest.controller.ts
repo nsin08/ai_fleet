@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { PgTelemetryRepository, PgEventRepository } from '@ai-fleet/adapters';
-import type { TelemetryPoint, FleetEvent } from '@ai-fleet/domain';
+import { PgTelemetryRepository, PgEventRepository, PgVehicleRepository } from '@ai-fleet/adapters';
+import type { TelemetryPoint, FleetEvent, VehicleLatestState } from '@ai-fleet/domain';
 import { RuleEngine } from '../services/rules/rule-engine.js';
 
 export const ingestRouter = Router();
@@ -46,7 +46,34 @@ ingestRouter.post('/telemetry', async (req: Request, res: Response, next: NextFu
     })) as unknown as TelemetryPoint[];
 
     const repo = new PgTelemetryRepository();
+    const vehicleRepo = new PgVehicleRepository();
     await repo.appendMany(points);
+
+    // Update vehicle_latest_state for each ingested point
+    for (const pt of points) {
+      const existing = await vehicleRepo.getLatestState(pt.vehicleId);
+      const state: VehicleLatestState = {
+        vehicleId: pt.vehicleId,
+        vehicleRegNo: pt.vehicleRegNo,
+        tripId: pt.tripId,
+        status: (pt.speedKph > 3 ? 'on_trip' : 'idle') as VehicleLatestState['status'],
+        lastTs: pt.ts instanceof Date ? pt.ts : new Date(pt.ts as unknown as string),
+        lat: pt.lat,
+        lng: pt.lng,
+        speedKph: pt.speedKph,
+        ignition: pt.ignition,
+        idling: pt.idling,
+        fuelPct: pt.fuelPct,
+        engineTempC: pt.engineTempC,
+        batteryV: pt.batteryV,
+        odometerKm: pt.odometerKm,
+        headingDeg: pt.headingDeg,
+        activeAlertCount: existing?.activeAlertCount ?? 0,
+        maintenanceDue: existing?.maintenanceDue ?? false,
+        updatedAt: new Date(),
+      };
+      await vehicleRepo.upsertLatestState(state);
+    }
 
     // Run rule engine async — don't block response
     RuleEngine.getInstance()
