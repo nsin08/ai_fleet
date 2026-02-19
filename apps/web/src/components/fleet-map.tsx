@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { VehicleState } from '../lib/types';
@@ -43,14 +43,18 @@ function statusIcon(status: string): L.DivIcon {
   });
 }
 
-/* ── Auto-fit bounds whenever states change ───────────────────────────────── */
+/* ── Auto-fit bounds ONCE on initial data load, not on every tick ────────── */
 function AutoFit({ states }: { states: VehicleState[] }) {
   const map = useMap();
+  // Use a ref to track whether we've already fitted the initial bounds
+  const fitted = useRef(false);
   useEffect(() => {
+    if (fitted.current) return;          // already done — don't jump on updates
     const pts = states.filter((s) => s.lat != null && s.lng != null);
     if (pts.length === 0) return;
     const bounds = L.latLngBounds(pts.map((s) => [Number(s.lat!), Number(s.lng!)]));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+    fitted.current = true;
   }, [map, states]);
   return null;
 }
