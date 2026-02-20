@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 
 const NAV = [
@@ -91,6 +91,12 @@ const NAV = [
 
 export function NavShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = () => {
+    document.cookie = 'demo_session=; Max-Age=0; path=/; SameSite=Lax';
+    router.replace('/login');
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#0f172a]">
@@ -147,6 +153,13 @@ export function NavShell({ children }: { children: React.ReactNode }) {
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
             <span className="text-[11px] text-slate-500">All systems nominal</span>
           </div>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="mt-2 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 transition-colors"
+          >
+            Sign out
+          </button>
         </div>
       </aside>
 

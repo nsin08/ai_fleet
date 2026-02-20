@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { apiPost } from '../lib/api';
 import type { AiChatResponse, AiDailySummaryResponse, AiEvidenceReference } from '../lib/types';
+import { MarkdownContent } from './markdown-content';
 
 type CopilotMessage = {
   id: string;
@@ -213,7 +214,7 @@ export function CopilotDrawer() {
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-[2001] rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-[12px] font-semibold shadow-lg"
         >
-          Copilot
+          OpsEdge AI
         </button>
       )}
 
@@ -230,7 +231,7 @@ export function CopilotDrawer() {
             <header className="px-4 py-3 border-b border-slate-800/70 bg-[#292524]">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-semibold text-white">Fleet Copilot</div>
+                  <div className="text-sm font-semibold text-white">OpsEdge AI</div>
                   <div className="text-[11px] text-slate-500">Context: {module}</div>
                 </div>
                 <button
@@ -268,7 +269,7 @@ export function CopilotDrawer() {
             <div ref={listRef} className="flex-1 overflow-auto p-4 space-y-3">
               {messages.length === 0 && (
                 <div className="rounded border border-slate-800 bg-slate-900/50 p-3 text-[12px] text-slate-400">
-                  Ask operational questions from any page. Copilot will include evidence references when available.
+                  Ask operational questions from any page. OpsEdge AI queries live fleet data and includes evidence references when available.
                 </div>
               )}
 
@@ -286,7 +287,7 @@ export function CopilotDrawer() {
                     {message.role === 'user' ? 'You' : 'Copilot'}
                     {message.model ? ` | ${message.model}` : ''}
                   </div>
-                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  <MarkdownContent content={message.content} />
 
                   {message.refs.length > 0 && (
                     <div className="mt-2 border-t border-slate-800/60 pt-2 space-y-1">
@@ -320,7 +321,7 @@ export function CopilotDrawer() {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask fleet copilot..."
+                  placeholder="Ask OpsEdge AI..."
                   rows={3}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {

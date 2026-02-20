@@ -5,6 +5,7 @@ import useSWR, { mutate } from 'swr';
 import clsx from 'clsx';
 import type { Alert, AlertClosureReason } from '../../lib/types';
 import { API, fetcher, apiPost } from '../../lib/api';
+import { MarkdownContent } from '../../components/markdown-content';
 
 const SWR_OPT = { revalidateOnFocus: false };
 
@@ -586,8 +587,8 @@ export default function AlertsPage() {
                   {aiLoading ? 'Analyzing...' : 'AI Explain'}
                 </button>
                 {aiText && (
-                  <div className="mt-3 p-3 bg-slate-900/60 rounded text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto">
-                    {aiText}
+                  <div className="mt-3 p-3 bg-slate-900/60 rounded max-h-[260px] overflow-y-auto">
+                    <MarkdownContent content={aiText} />
                   </div>
                 )}
               </div>

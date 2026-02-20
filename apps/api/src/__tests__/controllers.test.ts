@@ -55,6 +55,12 @@ const mockOllamaAdapter = {
   generateCompletion: jest.fn<AnyFn>(),
 };
 
+const mockRunOpsEdgeChat = jest.fn<AnyFn>();
+
+jest.unstable_mockModule('../services/ai/agent.js', () => ({
+  runOpsEdgeChat: mockRunOpsEdgeChat,
+}));
+
 jest.unstable_mockModule('@ai-fleet/adapters', () => ({
   getPool: mockGetPool,
   closePool: jest.fn(),
@@ -1025,9 +1031,9 @@ describe('GET /api/scenarios/:scenarioId', () => {
 
 describe('POST /api/ai/chat', () => {
   it('returns AI response', async () => {
-    mockOllamaAdapter.generateCompletion.mockResolvedValueOnce({
-      content: 'Fleet is operating normally.',
-      model: 'deepseek-r1:8b',
+    mockRunOpsEdgeChat.mockResolvedValueOnce({
+      reply: 'Fleet is operating normally.',
+      model: 'opsedge-ai/ollama',
     });
 
     const res = await request(app)
@@ -1036,7 +1042,7 @@ describe('POST /api/ai/chat', () => {
       .expect(200);
 
     expect(res.body.reply).toBe('Fleet is operating normally.');
-    expect(res.body.model).toBe('deepseek-r1:8b');
+    expect(res.body.model).toBe('opsedge-ai/ollama');
     expect(Array.isArray(res.body.evidence?.references)).toBe(true);
   });
 

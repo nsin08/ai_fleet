@@ -26,6 +26,29 @@ function fmtTs(ts?: string): string {
   try { return new Date(ts).toLocaleString('en-IN'); } catch { return ts; }
 }
 
+function fmtDate(ds?: string): string {
+  if (!ds) return '-';
+  try {
+    return new Date(ds).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return ds; }
+}
+
+function daysClass(days?: number | null): string {
+  if (days == null) return 'text-slate-400';
+  if (days <= 0)  return 'text-red-400 font-semibold';
+  if (days <= 3)  return 'text-orange-400 font-medium';
+  if (days <= 7)  return 'text-amber-400';
+  return 'text-slate-400';
+}
+
+function kmClass(km?: number | null): string {
+  if (km == null) return 'text-slate-400';
+  if (km <= 0)    return 'text-red-400 font-semibold';
+  if (km <= 500)  return 'text-orange-400 font-medium';
+  if (km <= 1500) return 'text-amber-400';
+  return 'text-slate-400';
+}
+
 function getApiError(payload: { error?: string; requiredPermission?: string }): string | null {
   if (!payload.error) return null;
   if (payload.error === 'forbidden' && payload.requiredPermission) {
@@ -209,9 +232,21 @@ export default function MaintenancePage() {
                       {plan.urgency ?? 'LOW'}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-slate-400">{plan.daysRemaining ?? '-'}</td>
-                  <td className="px-4 py-2 text-slate-400">{plan.kmRemaining != null ? Number(plan.kmRemaining).toFixed(1) : '-'}</td>
-                  <td className="px-4 py-2 text-slate-500">{plan.nextDueDate}</td>
+                  <td className={clsx('px-4 py-2', daysClass(plan.daysRemaining))}>
+                    {plan.daysRemaining != null
+                      ? plan.daysRemaining <= 0
+                        ? `${Math.abs(plan.daysRemaining)}d overdue`
+                        : `${plan.daysRemaining}d`
+                      : '-'}
+                  </td>
+                  <td className={clsx('px-4 py-2', kmClass(plan.kmRemaining))}>
+                    {plan.kmRemaining != null
+                      ? plan.kmRemaining <= 0
+                        ? `${Math.abs(Number(plan.kmRemaining)).toFixed(0)} km over`
+                        : `+${Number(plan.kmRemaining).toFixed(0)} km`
+                      : '-'}
+                  </td>
+                  <td className="px-4 py-2 text-slate-500">{fmtDate(plan.nextDueDate)}</td>
                 </tr>
               ))}
               {plans.length === 0 && (

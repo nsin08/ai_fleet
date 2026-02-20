@@ -70,11 +70,11 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
       getPool().query(
         `SELECT
            COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS on_trip,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'alerting')::int AS alerting,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'maintenance_due')::int AS maintenance_due
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS on_trip,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'alerting')::int AS alerting,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'maintenance_due')::int AS maintenance_due
          FROM fleet.vehicles v
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
          WHERE v.is_active = TRUE`,
@@ -83,9 +83,9 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
         `SELECT
            v.vehicle_type AS "vehicleType",
            COUNT(*)::int AS count,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS "onTrip",
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS "onTrip",
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked
          FROM fleet.vehicles v
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
          WHERE v.is_active = TRUE
@@ -97,9 +97,9 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
            v.depot_id AS "depotId",
            d.name AS "depotName",
            COUNT(*)::int AS count,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS "onTrip",
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS "onTrip",
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked
          FROM fleet.vehicles v
          LEFT JOIN fleet.depots d ON d.id = v.depot_id
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
@@ -205,6 +205,50 @@ fleetRouter.get('/trips', async (req: Request, res: Response, next: NextFunction
     ]);
 
     return res.json({ data: rowsResult.rows, total: totalResult.rows[0]?.['total'] ?? 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/fleet/trips/:tripId/trail — sampled lat/lng path for map rendering */
+fleetRouter.get('/trips/:tripId/trail', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tripId = req.params['tripId']!;
+    const maxPoints = 300;
+
+    const countResult = await getPool().query(
+      `SELECT COUNT(*)::int AS total FROM fleet.telemetry_points WHERE trip_id = $1`,
+      [tripId],
+    );
+    const total: number = countResult.rows[0]?.['total'] ?? 0;
+
+    if (total === 0) {
+      return res.json({ tripId, points: [] });
+    }
+
+    // Sample evenly: step = total / 300, keep first and every Nth row
+    const step = Math.max(1, Math.floor(total / maxPoints));
+    const result = await getPool().query(
+      `SELECT lat, lng
+       FROM (
+         SELECT lat, lng, ts,
+                ROW_NUMBER() OVER (ORDER BY ts ASC) AS rn
+         FROM fleet.telemetry_points
+         WHERE trip_id = $1
+           AND lat IS NOT NULL
+           AND lng IS NOT NULL
+       ) ranked
+       WHERE (rn - 1) % $2 = 0
+       ORDER BY rn ASC
+       LIMIT $3`,
+      [tripId, step, maxPoints],
+    );
+
+    const points: [number, number][] = result.rows.map(
+      (r: { lat: string; lng: string }) => [Number(r.lat), Number(r.lng)],
+    );
+
+    return res.json({ tripId, points });
   } catch (err) {
     next(err);
   }

@@ -1,9 +1,22 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { VehicleState } from '../lib/types';
+
+/** Fit map to a trip trail whenever the trail changes. */
+function FitToTripTrail({ trail }: { trail: [number, number][] }) {
+  const map = useMap();
+  const prevLen = useRef(0);
+  useEffect(() => {
+    if (trail.length < 2 || trail.length === prevLen.current) return;
+    prevLen.current = trail.length;
+    const bounds = L.latLngBounds(trail);
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: true });
+  }, [map, trail]);
+  return null;
+}
 
 /* ── Fix Leaflet default icon ─────────────────────────────────────────────── */
 /* Leaflet + bundlers lose track of the default marker images */
@@ -62,13 +75,16 @@ function AutoFit({ states }: { states: VehicleState[] }) {
 /* ── Main component ───────────────────────────────────────────────────────── */
 interface Props {
   states: VehicleState[];
+  trails?: Map<string, [number, number][]>;
+  /** Completed / historical trip telemetry path to highlight on the map */
+  tripTrail?: [number, number][];
   className?: string;
   onVehicleClick?: (vehicleId: string) => void;
 }
 
 const INDIA_CENTER: [number, number] = [19.076, 72.877]; // Mumbai default
 
-export default function FleetMap({ states, className = '', onVehicleClick }: Props) {
+export default function FleetMap({ states, trails, tripTrail, className = '', onVehicleClick }: Props) {
   const visible = states.filter((s) => s.lat != null && s.lng != null);
 
   return (
@@ -84,6 +100,36 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         maxZoom={19}
       />
+      {/* Trip trail — rendered first (bottom layer) */}
+      {tripTrail && tripTrail.length >= 2 && (
+        <>
+          <FitToTripTrail trail={tripTrail} />
+          {/* Outer glow */}
+          <Polyline
+            positions={tripTrail}
+            pathOptions={{ color: '#818cf8', opacity: 0.25, weight: 8 }}
+          />
+          {/* Solid path */}
+          <Polyline
+            positions={tripTrail}
+            pathOptions={{ color: '#6366f1', opacity: 0.85, weight: 3, dashArray: undefined }}
+          />
+        </>
+      )}
+      {/* Live vehicle trails */}
+      {trails &&
+        Array.from(trails.entries()).map(([vehicleId, pts]) => {
+          if (pts.length < 2) return null;
+          const state = visible.find((s) => s.vehicleId === vehicleId);
+          const colour = STATUS_COLOUR[state?.status ?? ''] ?? '#94a3b8';
+          return (
+            <Polyline
+              key={`trail-${vehicleId}`}
+              positions={pts}
+              pathOptions={{ color: colour, opacity: 0.45, weight: 2 }}
+            />
+          );
+        })}
       {visible.map((s) => (
         <Marker
           key={s.vehicleId}

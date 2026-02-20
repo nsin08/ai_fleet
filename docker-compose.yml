@@ -115,8 +115,9 @@ services:
       - "3000:3000"
     profiles: [core]
 
-  # ── Vehicle Emitters (live mode — scale as needed) ─────────────────────────
-  vehicle-emitter:
+  # ── Vehicle Emitters (live mode — 14 vehicles) ─────────────────────────────
+  # Mumbai fleet (veh-mum-01 to veh-mum-08)
+  vehicle-emitter-mum-01:
     build:
       context: apps/vehicle-emitter
       dockerfile: Dockerfile
@@ -126,9 +127,233 @@ services:
         condition: service_healthy
     environment:
       API_BASE_URL: http://api:3001
-      EMIT_INTERVAL_MS: 2000
-      VEHICLE_ID: ${VEHICLE_ID:-veh-mum-01}
-      VEHICLE_REG_NO: ${VEHICLE_REG_NO:-MH04AB1001}
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-01
+      VEHICLE_REG_NO: MH04AB1001
+      START_LAT: "19.076"
+      START_LNG: "72.877"
+    profiles: [live]
+
+  vehicle-emitter-mum-02:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-02
+      VEHICLE_REG_NO: MH04AB1002
+      START_LAT: "19.120"
+      START_LNG: "72.910"
+    profiles: [live]
+
+  vehicle-emitter-mum-03:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-03
+      VEHICLE_REG_NO: MH04AB1003
+      START_LAT: "18.960"
+      START_LNG: "72.820"
+    profiles: [live]
+
+  vehicle-emitter-mum-04:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-04
+      VEHICLE_REG_NO: MH04CD2001
+      START_LAT: "19.200"
+      START_LNG: "72.980"
+    profiles: [live]
+
+  vehicle-emitter-mum-05:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-05
+      VEHICLE_REG_NO: MH04CD2002
+      START_LAT: "19.040"
+      START_LNG: "72.850"
+    profiles: [live]
+
+  vehicle-emitter-mum-06:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-06
+      VEHICLE_REG_NO: MH04CD2003
+      START_LAT: "18.920"
+      START_LNG: "72.840"
+    profiles: [live]
+
+  vehicle-emitter-mum-07:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-07
+      VEHICLE_REG_NO: MH04EF3001
+      START_LAT: "19.150"
+      START_LNG: "72.860"
+    profiles: [live]
+
+  vehicle-emitter-mum-08:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-mum-08
+      VEHICLE_REG_NO: MH04EF3002
+      START_LAT: "19.005"
+      START_LNG: "72.935"
+    profiles: [live]
+
+  # Delhi fleet (veh-del-01 to veh-del-06)
+  vehicle-emitter-del-01:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-01
+      VEHICLE_REG_NO: DL05GH4001
+      START_LAT: "28.613"
+      START_LNG: "77.209"
+    profiles: [live]
+
+  vehicle-emitter-del-02:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-02
+      VEHICLE_REG_NO: DL05GH4002
+      START_LAT: "28.700"
+      START_LNG: "77.100"
+    profiles: [live]
+
+  vehicle-emitter-del-03:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-03
+      VEHICLE_REG_NO: DL05JK5001
+      START_LAT: "28.450"
+      START_LNG: "77.050"
+    profiles: [live]
+
+  vehicle-emitter-del-04:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-04
+      VEHICLE_REG_NO: DL05JK5002
+      START_LAT: "28.800"
+      START_LNG: "77.300"
+    profiles: [live]
+
+  vehicle-emitter-del-05:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-05
+      VEHICLE_REG_NO: DL05MN6001
+      START_LAT: "28.550"
+      START_LNG: "77.450"
+    profiles: [live]
+
+  vehicle-emitter-del-06:
+    build:
+      context: apps/vehicle-emitter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:3001
+      EMIT_INTERVAL_MS: 3000
+      VEHICLE_ID: veh-del-06
+      VEHICLE_REG_NO: DL05MN6002
+      START_LAT: "28.900"
+      START_LNG: "76.900"
     profiles: [live]
 
 volumes:

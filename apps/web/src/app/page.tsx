@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -70,11 +70,21 @@ export default function DashboardPage() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
+  // Vehicle trail tracking — keep last 30 positions per vehicle
+  const trailsRef = useRef<Map<string, [number, number][]>>(new Map());
+  const [trails, setTrails] = useState<Map<string, [number, number][]>>(new Map());
+
   const { data: selectedTrip } = useSWR<TripDetail>(
     selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}` : null,
     fetcher,
     SWR_OPT,
   );
+  const { data: trailResp } = useSWR<{ tripId: string; points: [number, number][] }>(
+    selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}/trail` : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateOnReconnect: false },
+  );
+  const tripTrail = trailResp?.points;
 
   useEffect(() => {
     let ws: WebSocket;
@@ -96,6 +106,15 @@ export default function DashboardPage() {
             } else if (msg.type === 'vehicleState') {
               void mutate(`${API}/api/fleet/states`);
               void mutate(`${API}/api/fleet/inventory`);
+              // Update trail for this vehicle
+              const d = msg.data as Partial<VehicleState>;
+              if (d?.vehicleId && d.lat != null && d.lng != null) {
+                const trail = trailsRef.current.get(d.vehicleId) ?? [];
+                trail.push([Number(d.lat), Number(d.lng)]);
+                if (trail.length > 30) trail.splice(0, trail.length - 30);
+                trailsRef.current.set(d.vehicleId, trail);
+                setTrails(new Map(trailsRef.current));
+              }
             } else if (msg.type === 'event') {
               void mutate(`${API}/api/fleet/trips?limit=15`);
               setLiveEvents((p) => [`EVENT: ${msg.data?.eventType} — ${msg.data?.vehicleRegNo ?? ''}`, ...p.slice(0, 49)]);
@@ -119,7 +138,7 @@ export default function DashboardPage() {
   }, [recentTrips, selectedTripId]);
 
   const onTripCount = inventory?.totals.onTrip
-    ?? vehicles.filter((v) => ['ON_TRIP', 'on_trip'].includes(v.status)).length;
+    ?? states.filter((s) => ['ON_TRIP', 'on_trip'].includes(s.status)).length;
   const alertingCount = inventory?.totals.alerting
     ?? states.filter((s) => s.activeAlertCount > 0).length;
   const activeTripCount = inventory?.totals.activeTrips
@@ -160,6 +179,8 @@ export default function DashboardPage() {
           <div className="flex-1 relative min-h-0">
             <FleetMap
               states={states}
+              trails={trails}
+              tripTrail={tripTrail}
               onVehicleClick={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
             />
           </div>
