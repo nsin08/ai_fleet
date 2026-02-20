@@ -12,15 +12,17 @@ export const getTopDriversTool = tool(
   async ({ limit = 5, depotId }: { limit?: number; depotId?: string }) => {
     const pool = getPool();
     const params: unknown[] = [Math.min(limit, 20)];
-    const depotFilter = depotId ? `AND d.depot_id = $${params.push(depotId)}` : '';
+    // drivers table has no depot_id; optionally cross-join via trips current assignment
+    const depotFilter = depotId
+      ? `AND EXISTS (SELECT 1 FROM fleet.trips t JOIN fleet.vehicles v ON v.id = t.vehicle_id WHERE t.driver_id = d.id AND v.depot_id = $${params.push(depotId)} AND t.status = 'active')`
+      : '';
     const result = await pool.query(
-      `SELECT d.id, d.name, d.licence_class, d.availability,
-              d.risk_score, d.shift_score, d.depot_id,
-              dep.name AS depot_name
+      `SELECT d.id, d.name, d.license_id, d.availability_status,
+              d.current_safety_score, d.base_safety_score,
+              d.shift_start_local, d.shift_end_local
        FROM fleet.drivers d
-       LEFT JOIN fleet.depots dep ON dep.id = d.depot_id
-       WHERE d.deleted_at IS NULL ${depotFilter}
-       ORDER BY d.shift_score DESC NULLS LAST
+       WHERE d.is_active = true ${depotFilter}
+       ORDER BY d.current_safety_score DESC NULLS LAST
        LIMIT $1`,
       params,
     );
@@ -29,7 +31,7 @@ export const getTopDriversTool = tool(
   {
     name: 'get_top_drivers',
     description:
-      'Get the top performing drivers ranked by shift score. Call this for queries about driver performance, best/top drivers, or driver rankings. Optionally filter by depot.',
+      'Get the top performing drivers ranked by safety score. Call this for queries about driver performance, available drivers, assignment readiness, or driver rankings.',
     schema: z.object({
       limit: z.number().optional().describe('Number of drivers to return (default 5, max 20)'),
       depotId: z.string().optional().describe('Filter by depot ID, e.g. "depot-mum" or "depot-del"'),
@@ -45,10 +47,9 @@ export const getOpenAlertsTool = tool(
     const severityFilter = severity ? `AND a.severity = $${params.push(severity.toUpperCase())}` : '';
     const result = await pool.query(
       `SELECT a.id, a.severity, a.alert_type, a.title, a.status,
-              a.created_at, a.acknowledged_at,
-              v.reg_no AS vehicle_reg_no, v.id AS vehicle_id
+              a.created_at, a.acknowledged_ts,
+              a.vehicle_reg_no, a.vehicle_id
        FROM fleet.alerts a
-       LEFT JOIN fleet.vehicles v ON v.id = a.vehicle_id
        WHERE a.status = 'OPEN' ${severityFilter}
        ORDER BY CASE a.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,
                 a.created_at ASC
@@ -60,9 +61,9 @@ export const getOpenAlertsTool = tool(
   {
     name: 'get_open_alerts',
     description:
-      'Get currently open fleet alerts. Use for queries about active alerts, incidents, critical issues, alarms, or unresolved problems. Can filter by severity: CRITICAL, HIGH, MEDIUM, LOW.',
+      'Get currently open fleet alerts. Use for queries about active alerts, incidents, critical issues, alarms, or unresolved problems. Can filter by severity: HIGH, MEDIUM, LOW.',
     schema: z.object({
-      severity: z.string().optional().describe('Filter by severity: CRITICAL, HIGH, MEDIUM, or LOW'),
+      severity: z.string().optional().describe('Filter by severity: HIGH, MEDIUM, or LOW'),
       limit: z.number().optional().describe('Number of alerts to return (default 10, max 50)'),
     }),
   },
@@ -75,13 +76,13 @@ export const getOnTripVehiclesTool = tool(
     const params: unknown[] = [];
     const depotFilter = depotId ? `AND v.depot_id = $${params.push(depotId)}` : '';
     const result = await pool.query(
-      `SELECT vls.vehicle_id, v.reg_no, v.vehicle_type, v.depot_id,
+      `SELECT vls.vehicle_id, v.vehicle_reg_no, v.vehicle_type, v.depot_id,
               vls.status, vls.speed_kph, vls.fuel_pct,
-              vls.lat, vls.lng, vls.updated_at
+              vls.lat, vls.lng, vls.last_ts
        FROM fleet.vehicle_latest_state vls
        JOIN fleet.vehicles v ON v.id = vls.vehicle_id
        WHERE LOWER(vls.status) IN ('on_trip', 'alerting') ${depotFilter}
-       ORDER BY vls.updated_at DESC`,
+       ORDER BY vls.last_ts DESC`,
       params,
     );
     return JSON.stringify({ count: result.rows.length, vehicles: result.rows });
@@ -105,7 +106,7 @@ export const getFleetSummaryTool = tool(
         SELECT LOWER(COALESCE(vls.status, v.status)) AS status, COUNT(*) AS count
         FROM fleet.vehicles v
         LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
-        WHERE v.deleted_at IS NULL
+        WHERE v.is_active = true
         GROUP BY 1
       `),
       pool.query(`
@@ -114,9 +115,9 @@ export const getFleetSummaryTool = tool(
         GROUP BY severity
       `),
       pool.query(`
-        SELECT availability, COUNT(*) AS count
-        FROM fleet.drivers WHERE deleted_at IS NULL
-        GROUP BY availability
+        SELECT availability_status, COUNT(*) AS count
+        FROM fleet.drivers WHERE is_active = true
+        GROUP BY availability_status
       `),
     ]);
     return JSON.stringify({
@@ -138,13 +139,13 @@ export const getFuelAnomaliesTool = tool(
   async ({ limit = 10 }: { limit?: number }) => {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT fa.id, fa.anomaly_type, fa.severity, fa.status,
-              fa.detected_at, fa.expected_litres, fa.actual_litres,
-              v.reg_no AS vehicle_reg_no
-       FROM fleet.fuel_anomalies fa
-       LEFT JOIN fleet.vehicles v ON v.id = fa.vehicle_id
-       WHERE fa.status = 'OPEN'
-       ORDER BY fa.detected_at DESC
+      `SELECT fe.id, fe.event_type, fe.severity, fe.status,
+              fe.ts, fe.estimated_liters, fe.fuel_delta_pct, fe.anomaly_score,
+              v.vehicle_reg_no
+       FROM fleet.fuel_events fe
+       LEFT JOIN fleet.vehicles v ON v.id = fe.vehicle_id
+       WHERE fe.status = 'OPEN' AND fe.event_type = 'anomaly'
+       ORDER BY fe.ts DESC
        LIMIT $1`,
       [Math.min(limit, 30)],
     );
@@ -168,3 +169,5 @@ export const allFleetTools = [
   getFleetSummaryTool,
   getFuelAnomaliesTool,
 ];
+
+
