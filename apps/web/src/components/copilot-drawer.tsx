@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { apiPost } from '../lib/api';
 import type { AiChatResponse, AiDailySummaryResponse, AiEvidenceReference } from '../lib/types';
+import { MarkdownContent } from './markdown-content';
 
 type CopilotMessage = {
   id: string;
@@ -108,111 +109,6 @@ function formatRef(ref: AiEvidenceReference): string {
 
 function randomId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-// ── Minimal markdown renderer ────────────────────────────────────────────────
-function renderInline(text: string, key: string | number): ReactNode {
-  const parts: ReactNode[] = [];
-  const re = /(\*\*(.+?)\*\*|\*([^*]+?)\*|`([^`]+?)`)/g;
-  let lastIdx = 0;
-  let m: RegExpExecArray | null;
-  re.lastIndex = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > lastIdx) parts.push(text.slice(lastIdx, m.index));
-    if (m[2] !== undefined)
-      parts.push(<strong key={`${key}-b${m.index}`} className="font-semibold text-slate-100">{m[2]}</strong>);
-    else if (m[3] !== undefined)
-      parts.push(<em key={`${key}-i${m.index}`} className="italic text-slate-300">{m[3]}</em>);
-    else if (m[4] !== undefined)
-      parts.push(<code key={`${key}-c${m.index}`} className="bg-slate-800 text-emerald-300 rounded px-1 font-mono text-[11px]">{m[4]}</code>);
-    lastIdx = m.index + m[0].length;
-  }
-  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
-  return parts.length === 0 ? '' : parts.length === 1 ? parts[0] : <>{parts}</>;
-}
-
-type MdBlock =
-  | { type: 'hr' }
-  | { type: 'heading'; level: number; text: string }
-  | { type: 'ul'; items: string[] }
-  | { type: 'ol'; items: string[] }
-  | { type: 'para'; lines: string[] };
-
-function parseMd(content: string): MdBlock[] {
-  const blocks: MdBlock[] = [];
-  let ulBuf: string[] = [];
-  let olBuf: string[] = [];
-  let paraBuf: string[] = [];
-
-  const flush = () => {
-    if (ulBuf.length) { blocks.push({ type: 'ul', items: [...ulBuf] }); ulBuf = []; }
-    if (olBuf.length) { blocks.push({ type: 'ol', items: [...olBuf] }); olBuf = []; }
-    if (paraBuf.length) { blocks.push({ type: 'para', lines: [...paraBuf] }); paraBuf = []; }
-  };
-
-  for (const line of content.split('\n')) {
-    if (/^-{3,}$/.test(line.trim())) { flush(); blocks.push({ type: 'hr' }); continue; }
-    const hm = /^(#{1,4})\s+(.+)$/.exec(line);
-    if (hm) { flush(); blocks.push({ type: 'heading', level: hm[1].length, text: hm[2] }); continue; }
-    if (line.trim() === '') { flush(); continue; }
-    const ulm = /^[*\-]\s+(.+)$/.exec(line);
-    if (ulm) { if (olBuf.length || paraBuf.length) flush(); ulBuf.push(ulm[1]); continue; }
-    const olm = /^\d+\.\s+(.+)$/.exec(line);
-    if (olm) { if (ulBuf.length || paraBuf.length) flush(); olBuf.push(olm[1]); continue; }
-    if (ulBuf.length || olBuf.length) flush();
-    paraBuf.push(line);
-  }
-  flush();
-  return blocks;
-}
-
-function MarkdownContent({ content }: { content: string }) {
-  const blocks = parseMd(content);
-  return (
-    <div className="space-y-1.5">
-      {blocks.map((b, i) => {
-        if (b.type === 'hr')
-          return <hr key={i} className="border-slate-700 my-1" />;
-        if (b.type === 'heading') {
-          const cls = b.level === 1
-            ? 'text-[13px] font-bold text-white mt-1'
-            : b.level === 2
-              ? 'text-[12px] font-bold text-slate-100 mt-1'
-              : 'text-[12px] font-semibold text-slate-200';
-          return <p key={i} className={cls}>{renderInline(b.text, i)}</p>;
-        }
-        if (b.type === 'ul')
-          return (
-            <ul key={i} className="space-y-0.5 pl-0.5">
-              {b.items.map((item, j) => (
-                <li key={j} className="flex gap-1.5 text-slate-300 text-[12px]">
-                  <span className="text-slate-500 select-none pt-px">&#8226;</span>
-                  <span className="leading-relaxed">{renderInline(item, `${i}-${j}`)}</span>
-                </li>
-              ))}
-            </ul>
-          );
-        if (b.type === 'ol')
-          return (
-            <ol key={i} className="space-y-0.5 pl-0.5">
-              {b.items.map((item, j) => (
-                <li key={j} className="flex gap-1.5 text-slate-300 text-[12px]">
-                  <span className="text-slate-500 select-none min-w-[16px]">{j + 1}.</span>
-                  <span className="leading-relaxed">{renderInline(item, `${i}-${j}`)}</span>
-                </li>
-              ))}
-            </ol>
-          );
-        return (
-          <p key={i} className="text-slate-300 text-[12px] leading-relaxed">
-            {b.lines.map((l, j) => (
-              <span key={j}>{j > 0 && <br />}{renderInline(l, `${i}-${j}`)}</span>
-            ))}
-          </p>
-        );
-      })}
-    </div>
-  );
 }
 
 export function CopilotDrawer() {

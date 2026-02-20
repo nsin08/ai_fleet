@@ -79,6 +79,12 @@ export default function DashboardPage() {
     fetcher,
     SWR_OPT,
   );
+  const { data: trailResp } = useSWR<{ tripId: string; points: [number, number][] }>(
+    selectedTripId ? `${API}/api/fleet/trips/${selectedTripId}/trail` : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateOnReconnect: false },
+  );
+  const tripTrail = trailResp?.points;
 
   useEffect(() => {
     let ws: WebSocket;
@@ -174,6 +180,7 @@ export default function DashboardPage() {
             <FleetMap
               states={states}
               trails={trails}
+              tripTrail={tripTrail}
               onVehicleClick={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
             />
           </div>
