@@ -70,11 +70,11 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
       getPool().query(
         `SELECT
            COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS on_trip,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'alerting')::int AS alerting,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'maintenance_due')::int AS maintenance_due
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS on_trip,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'alerting')::int AS alerting,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'maintenance_due')::int AS maintenance_due
          FROM fleet.vehicles v
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
          WHERE v.is_active = TRUE`,
@@ -83,9 +83,9 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
         `SELECT
            v.vehicle_type AS "vehicleType",
            COUNT(*)::int AS count,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS "onTrip",
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS "onTrip",
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked
          FROM fleet.vehicles v
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id
          WHERE v.is_active = TRUE
@@ -97,9 +97,9 @@ fleetRouter.get('/inventory', async (_req: Request, res: Response, next: NextFun
            v.depot_id AS "depotId",
            d.name AS "depotName",
            COUNT(*)::int AS count,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'on_trip')::int AS "onTrip",
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'idle')::int AS idle,
-           COUNT(*) FILTER (WHERE COALESCE(vls.status, v.status) = 'parked')::int AS parked
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'on_trip')::int AS "onTrip",
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'idle')::int AS idle,
+           COUNT(*) FILTER (WHERE LOWER(COALESCE(vls.status, v.status)) = 'parked')::int AS parked
          FROM fleet.vehicles v
          LEFT JOIN fleet.depots d ON d.id = v.depot_id
          LEFT JOIN fleet.vehicle_latest_state vls ON vls.vehicle_id = v.id

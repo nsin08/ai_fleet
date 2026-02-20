@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { VehicleState } from '../lib/types';
 
@@ -62,13 +62,14 @@ function AutoFit({ states }: { states: VehicleState[] }) {
 /* ── Main component ───────────────────────────────────────────────────────── */
 interface Props {
   states: VehicleState[];
+  trails?: Map<string, [number, number][]>;
   className?: string;
   onVehicleClick?: (vehicleId: string) => void;
 }
 
 const INDIA_CENTER: [number, number] = [19.076, 72.877]; // Mumbai default
 
-export default function FleetMap({ states, className = '', onVehicleClick }: Props) {
+export default function FleetMap({ states, trails, className = '', onVehicleClick }: Props) {
   const visible = states.filter((s) => s.lat != null && s.lng != null);
 
   return (
@@ -84,6 +85,20 @@ export default function FleetMap({ states, className = '', onVehicleClick }: Pro
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         maxZoom={19}
       />
+      {/* Trails — rendered first so markers sit on top */}
+      {trails &&
+        Array.from(trails.entries()).map(([vehicleId, pts]) => {
+          if (pts.length < 2) return null;
+          const state = visible.find((s) => s.vehicleId === vehicleId);
+          const colour = STATUS_COLOUR[state?.status ?? ''] ?? '#94a3b8';
+          return (
+            <Polyline
+              key={`trail-${vehicleId}`}
+              positions={pts}
+              pathOptions={{ color: colour, opacity: 0.45, weight: 2 }}
+            />
+          );
+        })}
       {visible.map((s) => (
         <Marker
           key={s.vehicleId}

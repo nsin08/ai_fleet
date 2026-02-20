@@ -2,6 +2,14 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { OllamaAiInferenceAdapter, PgAlertRepository, PgVehicleRepository, getPool } from '@ai-fleet/adapters';
+import { runOpsEdgeChat } from '../services/ai/agent.js';
+
+const AI_UNAVAILABLE_REPLY = 'OpsEdge AI is temporarily unavailable. Please try again in a moment.';
+
+function gracefulAiError(err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.warn('[opsedge-ai] error:', msg);
+}
 
 export const aiRouter = Router();
 
@@ -52,52 +60,38 @@ const dailySummarySchema = z.object({
 type EvidenceReference = z.infer<typeof evidenceReferenceSchema>;
 type ChatContext = z.infer<typeof chatContextSchema>;
 
-/** POST /api/ai/chat */
+/** POST /api/ai/chat — LangGraph ReAct agent with fleet data tools */
 aiRouter.post('/chat', async (req: Request, res: Response, next: NextFunction) => {
+  let body: z.infer<typeof chatSchema>;
   try {
-    const body = chatSchema.parse(req.body);
-    const ai = new OllamaAiInferenceAdapter();
+    body = chatSchema.parse(req.body);
+  } catch (validationErr) {
+    return next(validationErr); // let Zod errors propagate as 400
+  }
 
-    const contextReferences = await buildContextReferences(body.context);
-    const contextSummary = contextReferences
-      .slice(0, 6)
-      .map((ref) => `${ref.refType}:${ref.refId ?? ref.label}`)
-      .join(', ');
+  try {
+    const result = await runOpsEdgeChat(body.message, body.history);
 
-    const messages = [
-      {
-        role: 'system' as const,
-        content:
-          'You are an AI assistant for a fleet operations platform. ' +
-          'Help operators understand telemetry data, alerts, and routes. ' +
-          'Be concise, actionable, and cite available context references by id or label when relevant.',
-      },
-      ...(contextSummary
-        ? [{ role: 'system' as const, content: `Context references: ${contextSummary}` }]
-        : []),
-      ...body.history.map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content })),
-      { role: 'user' as const, content: body.message },
-    ];
-
-    const result = await ai.generateCompletion(messages);
     const evidence = buildEvidencePayload([
-      ...contextReferences,
-      {
-        refType: 'timestamp',
-        label: 'response_generated_at',
-        ts: new Date().toISOString(),
-      },
+      { refType: 'timestamp', label: 'response_generated_at', ts: new Date().toISOString() },
     ]);
 
-    res.json({
-      reply: result.content,
+    return res.json({
+      reply: result.reply,
       model: result.model,
       evidence,
       references: evidence.references,
       context: body.context ?? null,
     });
   } catch (err) {
-    next(err);
+    gracefulAiError(err);
+    return res.json({
+      reply: AI_UNAVAILABLE_REPLY,
+      model: 'unavailable',
+      evidence: buildEvidencePayload([]),
+      references: [],
+      context: null,
+    });
   }
 });
 
@@ -167,7 +161,14 @@ Provide:
       references: evidence.references,
     });
   } catch (err) {
-    next(err);
+    gracefulAiError(err);
+    return res.json({
+      alertId: req.body?.alertId ?? null,
+      explanation: AI_UNAVAILABLE_REPLY,
+      model: 'unavailable',
+      evidence: buildEvidencePayload([]),
+      references: [],
+    });
   }
 });
 
@@ -313,7 +314,15 @@ Also include one priority action and one watch item.
       references: evidence.references,
     });
   } catch (err) {
-    next(err);
+    gracefulAiError(err);
+    return res.json({
+      date: new Date().toISOString().slice(0, 10),
+      summary: AI_UNAVAILABLE_REPLY,
+      model: 'unavailable',
+      stats: { alertCount: 0, openAlertCount: 0, highAlertCount: 0, eventCount: 0 },
+      evidence: buildEvidencePayload([]),
+      references: [],
+    });
   }
 });
 
