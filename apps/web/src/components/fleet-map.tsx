@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { VehicleState } from '../lib/types';
+import { smoothPolyline } from '../lib/polyline-utils';
 
 /** Fit map to a trip trail whenever the trail changes. */
 function FitToTripTrail({ trail }: { trail: [number, number][] }) {
@@ -86,6 +87,12 @@ const INDIA_CENTER: [number, number] = [19.076, 72.877]; // Mumbai default
 
 export default function FleetMap({ states, trails, tripTrail, className = '', onVehicleClick }: Props) {
   const visible = states.filter((s) => s.lat != null && s.lng != null);
+  
+  // Smooth the trip trail for realistic rendering
+  const smoothedTripTrail = useMemo(
+    () => (tripTrail && tripTrail.length >= 2 ? smoothPolyline(tripTrail, 2) : tripTrail),
+    [tripTrail]
+  );
 
   return (
     <MapContainer
@@ -101,17 +108,17 @@ export default function FleetMap({ states, trails, tripTrail, className = '', on
         maxZoom={19}
       />
       {/* Trip trail — rendered first (bottom layer) */}
-      {tripTrail && tripTrail.length >= 2 && (
+      {smoothedTripTrail && smoothedTripTrail.length >= 2 && (
         <>
-          <FitToTripTrail trail={tripTrail} />
+          <FitToTripTrail trail={smoothedTripTrail} />
           {/* Outer glow */}
           <Polyline
-            positions={tripTrail}
+            positions={smoothedTripTrail}
             pathOptions={{ color: '#818cf8', opacity: 0.25, weight: 8 }}
           />
           {/* Solid path */}
           <Polyline
-            positions={tripTrail}
+            positions={smoothedTripTrail}
             pathOptions={{ color: '#6366f1', opacity: 0.85, weight: 3, dashArray: undefined }}
           />
         </>

@@ -41,15 +41,22 @@ const SEVERITY_BG: Record<string, string> = {
   LOW: 'bg-yellow-900/50 text-yellow-300 border-yellow-800/50',
 };
 
-function StatCard({ label, value, sub, valueClass = 'text-white' }: {
-  label: string; value: number | string; sub?: string; valueClass?: string;
+function StatCard({ label, value, sub, valueClass = 'text-white', onClick, isActive = false }: {
+  label: string; value: number | string; sub?: string; valueClass?: string; onClick?: () => void; isActive?: boolean;
 }) {
   return (
-    <div className="px-6 py-3 bg-[#0c1322]">
+    <button
+      onClick={onClick}
+      type="button"
+      className={clsx(
+        'px-6 py-3 bg-[#0c1322] hover:bg-slate-800/30 transition-colors text-left',
+        isActive && 'bg-blue-950/40 border-l-2 border-blue-400'
+      )}
+    >
       <div className="text-[10px] font-medium text-slate-600 uppercase tracking-wide">{label}</div>
       <div className={clsx('text-2xl font-bold mt-0.5 leading-tight tabular-nums', valueClass)}>{value}</div>
       {sub && <div className="text-[10px] text-slate-600 mt-0.5">{sub}</div>}
-    </div>
+    </button>
   );
 }
 
@@ -69,6 +76,7 @@ export default function DashboardPage() {
   const [wsOk, setWsOk] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [vehicleFilter, setVehicleFilter] = useState<string | null>(null); // Filter: null = all, 'on_trip', 'alerting', etc.
 
   // Vehicle trail tracking — keep last 30 positions per vehicle
   const trailsRef = useRef<Map<string, [number, number][]>>(new Map());
@@ -148,6 +156,22 @@ export default function DashboardPage() {
   const fmtTs = (ts?: string) => (ts ? new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-');
   const fmtKm = (km?: number) => (km == null ? '-' : `${Number(km).toFixed(1)} km`);
 
+  // Filter vehicles based on selected status
+  const filteredVehicles = vehicleFilter
+    ? vehicles.filter((v) => {
+        const state = states.find((s) => s.vehicleId === v.id);
+        if (vehicleFilter === 'on_trip') return ['ON_TRIP', 'on_trip'].includes(state?.status ?? '');
+        if (vehicleFilter === 'alerting') return (state?.activeAlertCount ?? 0) > 0;
+        if (vehicleFilter === 'idle') return ['IDLE', 'idle'].includes(state?.status ?? '');
+        return false;
+      })
+    : vehicles;
+
+  // Filtered vehicle states
+  const filteredStates = vehicleFilter
+    ? states.filter((s) => filteredVehicles.some((v) => v.id === s.vehicleId))
+    : states;
+
   return (
     <div className="flex flex-col h-full bg-[#0f172a] overflow-hidden">
       {/* Top header bar */}
@@ -163,13 +187,43 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI strip */}
-      <div className="flex gap-px bg-slate-800/40 border-b border-slate-800/60 flex-shrink-0">
-        <StatCard label="Total Vehicles" value={vehicles.length} />
-        <StatCard label="On Trip" value={onTripCount} valueClass={onTripCount > 0 ? 'text-green-400' : 'text-white'} />
-        <StatCard label="Open Alerts" value={alerts.length} valueClass={alerts.length > 0 ? 'text-red-400' : 'text-white'} />
-        <StatCard label="Active Trips" value={activeTripCount} valueClass={activeTripCount > 0 ? 'text-cyan-300' : 'text-white'} />
-        <StatCard label="Completed Trips" value={completedTripCount} valueClass={completedTripCount > 0 ? 'text-blue-300' : 'text-white'} />
-        <StatCard label="Alerting" value={alertingCount} valueClass={alertingCount > 0 ? 'text-orange-400' : 'text-white'} sub="vehicles with active alerts" />
+      <div className="flex gap-px bg-slate-800/40 border-b border-slate-800/60 flex-shrink-0 overflow-x-auto">
+        <StatCard 
+          label="Total Vehicles" 
+          value={vehicles.length}
+          onClick={() => setVehicleFilter(null)}
+          isActive={vehicleFilter === null}
+        />
+        <StatCard 
+          label="On Trip" 
+          value={onTripCount} 
+          valueClass={onTripCount > 0 ? 'text-green-400' : 'text-white'}
+          onClick={() => setVehicleFilter('on_trip')}
+          isActive={vehicleFilter === 'on_trip'}
+        />
+        <StatCard 
+          label="Open Alerts" 
+          value={alerts.length} 
+          valueClass={alerts.length > 0 ? 'text-red-400' : 'text-white'}
+        />
+        <StatCard 
+          label="Active Trips" 
+          value={activeTripCount} 
+          valueClass={activeTripCount > 0 ? 'text-cyan-300' : 'text-white'}
+        />
+        <StatCard 
+          label="Completed Trips" 
+          value={completedTripCount} 
+          valueClass={completedTripCount > 0 ? 'text-blue-300' : 'text-white'}
+        />
+        <StatCard 
+          label="Alerting" 
+          value={alertingCount} 
+          sub="vehicles with active alerts"
+          valueClass={alertingCount > 0 ? 'text-orange-400' : 'text-white'}
+          onClick={() => setVehicleFilter('alerting')}
+          isActive={vehicleFilter === 'alerting'}
+        />
       </div>
 
       {/* Main content */}
@@ -178,7 +232,7 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 relative min-h-0">
             <FleetMap
-              states={states}
+              states={filteredStates}
               trails={trails}
               tripTrail={tripTrail}
               onVehicleClick={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
@@ -280,30 +334,42 @@ export default function DashboardPage() {
         <div className="w-72 flex-shrink-0 border-l border-slate-800/60 flex flex-col overflow-hidden bg-[#0c1322]">
           {/* Vehicle list */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            <div className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-[#0c1322] z-10">
-              Vehicles <span className="text-slate-700">({vehicles.length})</span>
+            <div className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-[#0c1322] z-10 flex items-center justify-between">
+              <span>Vehicles <span className="text-slate-700">({filteredVehicles.length})</span></span>
+              {vehicleFilter && (
+                <button
+                  onClick={() => setVehicleFilter(null)}
+                  className="text-[9px] px-2 py-0.5 bg-blue-900/60 text-blue-300 rounded hover:bg-blue-900/80 transition-colors"
+                >
+                  Clear filter
+                </button>
+              )}
             </div>
-            {vehicles.map((v) => {
-              const st = states.find((s) => s.vehicleId === v.id);
-              const status = st?.status ?? v.status;
-              const isSelected = selectedVehicleId === v.id;
-              return (
-                <Link key={v.id} href={`/vehicles/${v.id}`}
-                  className={clsx('flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/40 hover:bg-slate-800/30 transition-colors', isSelected && 'bg-blue-950/30 border-blue-800/40')}>
-                  <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', STATUS_DOT[status] ?? 'bg-slate-600')} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-semibold text-white truncate">{v.vehicleRegNo}</div>
-                    <div className="text-[10px] text-slate-500 capitalize">{status.toLowerCase().replace(/_/g, ' ')}</div>
-                  </div>
-                  {(st?.activeAlertCount != null && Number(st.activeAlertCount) > 0) && (
-                    <span className="text-[10px] font-bold text-red-400 flex-shrink-0">{st!.activeAlertCount}</span>
-                  )}
-                  {st?.speedKph != null && Number(st.speedKph) > 0 && (
-                    <span className="text-[10px] text-slate-600 flex-shrink-0 tabular-nums">{n(st.speedKph)}</span>
-                  )}
-                </Link>
-              );
-            })}
+            {filteredVehicles.length === 0 ? (
+              <div className="px-4 py-4 text-[11px] text-slate-700">No vehicles match filter</div>
+            ) : (
+              filteredVehicles.map((v) => {
+                const st = states.find((s) => s.vehicleId === v.id);
+                const status = st?.status ?? v.status;
+                const isSelected = selectedVehicleId === v.id;
+                return (
+                  <Link key={v.id} href={`/vehicles/${v.id}`}
+                    className={clsx('flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/40 hover:bg-slate-800/30 transition-colors', isSelected && 'bg-blue-950/30 border-blue-800/40')}>
+                    <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', STATUS_DOT[status] ?? 'bg-slate-600')} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-semibold text-white truncate">{v.vehicleRegNo}</div>
+                      <div className="text-[10px] text-slate-500 capitalize">{status.toLowerCase().replace(/_/g, ' ')}</div>
+                    </div>
+                    {(st?.activeAlertCount != null && Number(st.activeAlertCount) > 0) && (
+                      <span className="text-[10px] font-bold text-red-400 flex-shrink-0">{st!.activeAlertCount}</span>
+                    )}
+                    {st?.speedKph != null && Number(st.speedKph) > 0 && (
+                      <span className="text-[10px] text-slate-600 flex-shrink-0 tabular-nums">{n(st.speedKph)}</span>
+                    )}
+                  </Link>
+                );
+              })
+            )}
           </div>
 
           {/* Inventory */}
