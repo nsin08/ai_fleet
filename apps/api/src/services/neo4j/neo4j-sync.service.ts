@@ -1,5 +1,6 @@
 import { getPool } from '@ai-fleet/adapters';
 import { isNeo4jAvailable, openSession } from './neo4j.client.js';
+import embeddingGenerator from './embedding-generator.js';
 
 const log = {
   info: (msg: string, extra?: any) =>
@@ -66,6 +67,9 @@ export class Neo4jSyncService {
       } finally {
         await session.close();
       }
+
+      // Trigger embedding generation after successful sync (non-blocking, non-fatal)
+      await embeddingGenerator.generateAll();
     } catch (error) {
       log.warn('[syncAll] Sync failed (non-fatal)', {
         error: error instanceof Error ? error.message : String(error),
@@ -100,6 +104,9 @@ export class Neo4jSyncService {
       } finally {
         await session.close();
       }
+
+      // Trigger embedding generation after delta sync (non-blocking, non-fatal)
+      await embeddingGenerator.generateAll();
     } catch (error) {
       log.warn('[syncDelta] Delta sync failed (non-fatal)', {
         error: error instanceof Error ? error.message : String(error),
