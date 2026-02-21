@@ -1,0 +1,53 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Neo4j Schema — ai_fleet
+// Run idempotently on every app startup (all statements use IF NOT EXISTS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Node Uniqueness Constraints ───────────────────────────────────────────────
+CREATE CONSTRAINT unique_driver IF NOT EXISTS
+  FOR (n:Driver) REQUIRE n.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_vehicle IF NOT EXISTS
+  FOR (n:Vehicle) REQUIRE n.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_alert IF NOT EXISTS
+  FOR (n:Alert) REQUIRE n.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_depot IF NOT EXISTS
+  FOR (n:Depot) REQUIRE n.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_trip IF NOT EXISTS
+  FOR (n:Trip) REQUIRE n.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_workorder IF NOT EXISTS
+  FOR (n:WorkOrder) REQUIRE n.id IS UNIQUE;
+
+// ── Vector Indices for Semantic Search ────────────────────────────────────────
+// Requires Neo4j 5.11+ with the vector index feature enabled
+// Model: mxbai-embed-large (1024 dimensions, cosine similarity)
+
+CREATE VECTOR INDEX driver_embedding_index IF NOT EXISTS
+  FOR (n:Driver) ON (n.embedding)
+  OPTIONS {
+    indexConfig: {
+      `vector.dimensions`: 1024,
+      `vector.similarity_function`: 'cosine'
+    }
+  };
+
+CREATE VECTOR INDEX alert_embedding_index IF NOT EXISTS
+  FOR (n:Alert) ON (n.embedding)
+  OPTIONS {
+    indexConfig: {
+      `vector.dimensions`: 1024,
+      `vector.similarity_function`: 'cosine'
+    }
+  };
+
+// ── Standard Property Indices ─────────────────────────────────────────────────
+CREATE INDEX driver_status_idx IF NOT EXISTS FOR (n:Driver) ON (n.status);
+CREATE INDEX driver_depot_idx  IF NOT EXISTS FOR (n:Driver) ON (n.depotId);
+CREATE INDEX vehicle_status_idx IF NOT EXISTS FOR (n:Vehicle) ON (n.status);
+CREATE INDEX alert_status_idx  IF NOT EXISTS FOR (n:Alert) ON (n.status);
+CREATE INDEX alert_severity_idx IF NOT EXISTS FOR (n:Alert) ON (n.severity);
+CREATE INDEX workorder_status_idx IF NOT EXISTS FOR (n:WorkOrder) ON (n.status);
