@@ -1,8 +1,14 @@
-import { Logger } from '../../../config/logger.js';
 import { getPool } from '@ai-fleet/adapters';
 import { isNeo4jAvailable, openSession } from './neo4j.client.js';
 
-const logger = Logger('neo4j-sync');
+const log = {
+  info: (msg: string, extra?: any) =>
+    console.log(`[neo4j-sync] ${msg}`, extra ? JSON.stringify(extra, null, 2) : ''),
+  debug: (msg: string, extra?: any) =>
+    console.debug(`[neo4j-sync] ${msg}`, extra ? JSON.stringify(extra, null, 2) : ''),
+  warn: (msg: string, extra?: any) =>
+    console.warn(`[neo4j-sync] ${msg}`, extra ? JSON.stringify(extra, null, 2) : ''),
+};
 
 /**
  * Neo4j Sync Service
@@ -32,12 +38,12 @@ export class Neo4jSyncService {
    */
   async syncAll(): Promise<void> {
     if (!isNeo4jAvailable()) {
-      logger.warn('[syncAll] Neo4j unavailable, skipping full sync');
+      log.warn('[syncAll] Neo4j unavailable, skipping full sync');
       return;
     }
 
     try {
-      logger.info('[syncAll] Starting full sync...');
+      log.info('[syncAll] Starting full sync...');
 
       const session = openSession();
       try {
@@ -56,12 +62,12 @@ export class Neo4jSyncService {
         await this.syncAssignedToRelationships(session);
         await this.syncCompletedRelationships(session);
 
-        logger.info('[syncAll] Full sync completed successfully');
+        log.info('[syncAll] Full sync completed successfully');
       } finally {
         await session.close();
       }
     } catch (error) {
-      logger.warn('[syncAll] Sync failed (non-fatal)', {
+      log.warn('[syncAll] Sync failed (non-fatal)', {
         error: error instanceof Error ? error.message : String(error),
       });
       // Do not throw; allow API to continue
@@ -74,12 +80,12 @@ export class Neo4jSyncService {
    */
   async syncDelta(): Promise<void> {
     if (!isNeo4jAvailable()) {
-      logger.warn('[syncDelta] Neo4j unavailable, skipping delta sync');
+      log.warn('[syncDelta] Neo4j unavailable, skipping delta sync');
       return;
     }
 
     try {
-      logger.debug('[syncDelta] Starting delta sync...');
+      log.debug('[syncDelta] Starting delta sync...');
 
       const session = openSession();
       try {
@@ -90,12 +96,12 @@ export class Neo4jSyncService {
         await this.syncAlertNodes(session);
         await this.syncWorkOrderNodes(session);
 
-        logger.debug('[syncDelta] Delta sync completed');
+        log.debug('[syncDelta] Delta sync completed');
       } finally {
         await session.close();
       }
     } catch (error) {
-      logger.warn('[syncDelta] Delta sync failed (non-fatal)', {
+      log.warn('[syncDelta] Delta sync failed (non-fatal)', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -132,9 +138,9 @@ export class Neo4jSyncService {
         await this.upsertDriverBatch(session, batch);
       }
 
-      logger.debug(`[syncDriverNodes] Synced ${result.rows.length} drivers`);
+      log.debug(`[syncDriverNodes] Synced ${result.rows.length} drivers`);
     } catch (error) {
-      logger.warn('[syncDriverNodes] Failed', {
+      log.warn('[syncDriverNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -189,9 +195,9 @@ export class Neo4jSyncService {
         );
       }
 
-      logger.debug(`[syncVehicleNodes] Synced ${result.rows.length} vehicles`);
+      log.debug(`[syncVehicleNodes] Synced ${result.rows.length} vehicles`);
     } catch (error) {
-      logger.warn('[syncVehicleNodes] Failed', {
+      log.warn('[syncVehicleNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -214,9 +220,9 @@ export class Neo4jSyncService {
         );
       }
 
-      logger.debug(`[syncDepotNodes] Synced ${result.rows.length} depots`);
+      log.debug(`[syncDepotNodes] Synced ${result.rows.length} depots`);
     } catch (error) {
-      logger.warn('[syncDepotNodes] Failed', {
+      log.warn('[syncDepotNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -248,9 +254,9 @@ export class Neo4jSyncService {
         );
       }
 
-      logger.debug(`[syncAlertNodes] Synced ${result.rows.length} alerts`);
+      log.debug(`[syncAlertNodes] Synced ${result.rows.length} alerts`);
     } catch (error) {
-      logger.warn('[syncAlertNodes] Failed', {
+      log.warn('[syncAlertNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -281,9 +287,9 @@ export class Neo4jSyncService {
         );
       }
 
-      logger.debug(`[syncWorkOrderNodes] Synced ${result.rows.length} work orders`);
+      log.debug(`[syncWorkOrderNodes] Synced ${result.rows.length} work orders`);
     } catch (error) {
-      logger.warn('[syncWorkOrderNodes] Failed', {
+      log.warn('[syncWorkOrderNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -314,9 +320,9 @@ export class Neo4jSyncService {
         );
       }
 
-      logger.debug(`[syncTripNodes] Synced ${result.rows.length} trips`);
+      log.debug(`[syncTripNodes] Synced ${result.rows.length} trips`);
     } catch (error) {
-      logger.warn('[syncTripNodes] Failed', {
+      log.warn('[syncTripNodes] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -334,9 +340,9 @@ export class Neo4jSyncService {
          MERGE (d)-[:DRIVES]->(v)`
       );
 
-      logger.debug('[syncDrivesRelationships] Synced DRIVES relationships');
+      log.debug('[syncDrivesRelationships] Synced DRIVES relationships');
     } catch (error) {
-      logger.warn('[syncDrivesRelationships] Failed', {
+      log.warn('[syncDrivesRelationships] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -352,9 +358,9 @@ export class Neo4jSyncService {
          MERGE (v)-[:LOCATED_IN]->(d)`
       );
 
-      logger.debug('[syncLocatedInRelationships] Synced LOCATED_IN relationships');
+      log.debug('[syncLocatedInRelationships] Synced LOCATED_IN relationships');
     } catch (error) {
-      logger.warn('[syncLocatedInRelationships] Failed', {
+      log.warn('[syncLocatedInRelationships] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -370,9 +376,9 @@ export class Neo4jSyncService {
          MERGE (a)-[:AFFECTS]->(v)`
       );
 
-      logger.debug('[syncAffectsRelationships] Synced AFFECTS relationships');
+      log.debug('[syncAffectsRelationships] Synced AFFECTS relationships');
     } catch (error) {
-      logger.warn('[syncAffectsRelationships] Failed', {
+      log.warn('[syncAffectsRelationships] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -388,9 +394,9 @@ export class Neo4jSyncService {
          MERGE (w)-[:ASSIGNED_TO]->(v)`
       );
 
-      logger.debug('[syncAssignedToRelationships] Synced ASSIGNED_TO relationships');
+      log.debug('[syncAssignedToRelationships] Synced ASSIGNED_TO relationships');
     } catch (error) {
-      logger.warn('[syncAssignedToRelationships] Failed', {
+      log.warn('[syncAssignedToRelationships] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -406,9 +412,9 @@ export class Neo4jSyncService {
          MERGE (d)-[:COMPLETED]->(t)`
       );
 
-      logger.debug('[syncCompletedRelationships] Synced COMPLETED relationships');
+      log.debug('[syncCompletedRelationships] Synced COMPLETED relationships');
     } catch (error) {
-      logger.warn('[syncCompletedRelationships] Failed', {
+      log.warn('[syncCompletedRelationships] Failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
