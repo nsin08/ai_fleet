@@ -20,6 +20,12 @@ import { WsGateway } from './ws/ws-gateway.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { ReplayEngine } from './services/replay/replay-engine.js';
 import { RuleEngine } from './services/rules/rule-engine.js';
+import {
+  verifyNeo4jConnectivity,
+  applySchema,
+  closeNeo4jDriver,
+  isNeo4jAvailable,
+} from './services/neo4j/neo4j.client.js';
 
 export function buildApp(): ReturnType<typeof express> {
   const app = express();
@@ -45,7 +51,11 @@ export function buildApp(): ReturnType<typeof express> {
   app.use('/api/admin', adminRouter);
 
   app.get('/healthz', (_req, res) => {
-    res.json({ status: 'ok', ts: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      ts: new Date().toISOString(),
+      neo4j: isNeo4jAvailable() ? 'connected' : 'unavailable',
+    });
   });
 
   // ─── Error handler (must be last) ───────────────────────────────────────────
@@ -61,3 +71,26 @@ export function buildHttpServer(app: ReturnType<typeof express>) {
   RuleEngine.init();
   return { httpServer, wsGateway };
 }
+
+/**
+ * Initialize Neo4j: verify connectivity and apply schema (idempotent).
+ * Non-fatal — if Neo4j is unreachable the API continues without graph context.
+ * AI routes should check isNeo4jAvailable() and return a graceful fallback.
+ */
+export async function initNeo4j(): Promise<void> {
+  try {
+    await verifyNeo4jConnectivity();
+    await applySchema();
+  } catch (err) {
+    console.warn(
+      '[neo4j] ⚠ Neo4j unavailable on startup — AI graph context disabled.',
+      err instanceof Error ? err.message : err,
+    );
+    // Non-fatal: rest of API continues without Neo4j
+  }
+}
+
+/**
+ * Close Neo4j driver — call on SIGTERM/SIGINT.
+ */
+export { closeNeo4jDriver, isNeo4jAvailable };
